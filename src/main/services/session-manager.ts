@@ -36,7 +36,8 @@ class SessionManager {
     projectDir: string,
     claudeSessionId?: string | null,
     rules?: string[],
-    pats?: PAT[]
+    pats?: PAT[],
+    claudeModel?: string
   ): Promise<SessionInfo> {
     if (!pty) {
       throw new Error(
@@ -153,7 +154,7 @@ class SessionManager {
     this.sessions.set(id, managed)
 
     // Send the claude command into the shell
-    const claudeCmd = buildClaudeArgs(cardTitle, claudeSessionId)
+    const claudeCmd = buildClaudeArgs(cardTitle, claudeSessionId, claudeModel)
     const startedAt = Date.now()
     ptyProcess.write(claudeCmd + '\r')
 
@@ -246,6 +247,46 @@ class SessionManager {
 
   getCwd(sessionId: string): string | null {
     return this.parseCwdFromBuffer(sessionId)
+  }
+
+  async getContextInfo(sessionId: string): Promise<string | null> {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) return null
+    const claudeId = managed.info.claudeSessionId
+    const projectDir = managed.info.projectDir
+    if (!claudeId || !projectDir) return null
+
+    try {
+      const projectKey = projectDir.replace(/[^a-zA-Z0-9-]/g, '-').replace(/-+$/, '')
+      const jsonlPath = join(homedir(), '.claude', 'projects', projectKey, claudeId + '.jsonl')
+      const content = await readFile(jsonlPath, 'utf-8')
+      const lines = content.split('\n').filter((l) => l.trim())
+
+      // Scan backward for last assistant message with usage data
+      for (let i = lines.length - 1; i >= 0; i--) {
+        try {
+          const entry = JSON.parse(lines[i])
+          const usage = entry?.message?.usage
+          if (usage && entry?.message?.role === 'assistant') {
+            const inputTokens = (usage.input_tokens ?? 0)
+              + (usage.cache_creation_input_tokens ?? 0)
+              + (usage.cache_read_input_tokens ?? 0)
+            const contextLimit = 1000000
+            const pct = Math.round((inputTokens / contextLimit) * 100)
+            if (inputTokens >= 1000) {
+              const k = (inputTokens / 1000).toFixed(1).replace(/\.0$/, '')
+              return `${pct}% (${k}k)`
+            }
+            return `${pct}% (${inputTokens})`
+          }
+        } catch {
+          continue
+        }
+      }
+    } catch {
+      // file doesn't exist yet or can't be read
+    }
+    return null
   }
 
   private startClaudeIdDetection(sessionId: string, projectDir: string, startedAfter: number): void {

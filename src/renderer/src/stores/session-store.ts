@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { SessionInfo, SessionStatus } from '@shared/models'
 import { useBoardStore } from './board-store'
 
-type ViewName = 'board' | 'sessions'
+type ViewName = 'board' | 'sessions' | 'notes'
 
 interface SessionState {
   sessions: Record<string, SessionInfo>
@@ -14,6 +14,7 @@ interface SessionState {
 
 interface SessionActions {
   startSession: (cardId: string, cardTitle: string, projectDir: string, claudeSessionId?: string | null) => Promise<SessionInfo>
+  startSessionInline: (cardId: string, cardTitle: string, projectDir: string, claudeSessionId?: string | null) => Promise<SessionInfo>
   stopSession: (sessionId: string) => Promise<void>
   setActiveSession: (sessionId: string | null) => void
   openTab: (sessionId: string) => void
@@ -41,6 +42,17 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       openTabs: state.openTabs.includes(info.id) ? state.openTabs : [...state.openTabs, info.id],
       activeSessionId: info.id,
       viewingSessionId: info.id
+    }))
+    return info
+  },
+
+  // Like startSession but does not open the full-screen modal — used for the
+  // inline CLI pane embedded in the Notes editor.
+  startSessionInline: async (cardId, cardTitle, projectDir, claudeSessionId) => {
+    const info = await window.api.startSession({ cardId, cardTitle, projectDir, claudeSessionId })
+    set((state) => ({
+      sessions: { ...state.sessions, [info.id]: info },
+      openTabs: state.openTabs.includes(info.id) ? state.openTabs : [...state.openTabs, info.id]
     }))
     return info
   },
@@ -157,8 +169,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             [sessionId]: { ...state.sessions[sessionId], claudeSessionId: claudeConversationId }
           }
         }))
-        // Also persist on the card for resume across restarts
-        useBoardStore.getState().updateCard(session.cardId, { claudeSessionId: claudeConversationId })
+        // Persist for resume across restarts. Notes sessions use a synthetic
+        // cardId of `notes:<name>` and are linked to the note instead of a card.
+        if (session.cardId.startsWith('notes:')) {
+          const noteName = session.cardId.slice('notes:'.length)
+          window.api.setNoteSession(noteName, claudeConversationId)
+        } else {
+          useBoardStore.getState().updateCard(session.cardId, { claudeSessionId: claudeConversationId })
+        }
       }
     })
 

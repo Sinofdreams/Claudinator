@@ -158,8 +158,8 @@ export default function GitPanel({ projectDir, sessionId }: GitPanelProps): JSX.
           </h3>
         </div>
         <div className="flex items-center justify-center flex-1 px-6">
-          <div className="text-center">
-            <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full" style={{ border: '1px solid var(--border-subtle)', backgroundColor: 'var(--bg-surface)' }}>
+          <div className="flex flex-col items-center text-center">
+            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full" style={{ border: '1px solid var(--border-subtle)', backgroundColor: 'var(--bg-surface)' }}>
               <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" style={{ color: 'var(--text-faint)' }} strokeLinecap="round">
                 <circle cx="8" cy="8" r="6" />
                 <path d="M8 5.5v2.5M8 10v.5" />
@@ -210,8 +210,8 @@ export default function GitPanel({ projectDir, sessionId }: GitPanelProps): JSX.
       <div className="flex-1 overflow-y-auto">
         {status && status.files.length === 0 && (
           <div className="flex items-center justify-center h-full px-4">
-            <div className="text-center">
-              <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full" style={{ border: '1px solid var(--border-subtle)', backgroundColor: 'var(--bg-surface)' }}>
+            <div className="flex flex-col items-center text-center">
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full" style={{ border: '1px solid var(--border-subtle)', backgroundColor: 'var(--bg-surface)' }}>
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-green-600" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M3.5 8.5l3 3 6-6" />
                 </svg>

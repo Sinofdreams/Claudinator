@@ -4,27 +4,28 @@ import { FitAddon } from '@xterm/addon-fit'
 import { useSettingsStore } from '@/stores/settings-store'
 import type { ITheme } from '@xterm/xterm'
 
+// Tokyo Night palette (matches the Mux terminal emulator)
 export const XTERM_DARK: ITheme = {
-  background: '#0d1117',
-  foreground: '#e6edf3',
-  cursor: '#f0f6fc',
-  selectionBackground: '#264f78',
-  black: '#484f58',
-  red: '#ff7b72',
-  green: '#7ee787',
-  yellow: '#d29922',
-  blue: '#79c0ff',
-  magenta: '#d2a8ff',
-  cyan: '#76e4f7',
-  white: '#8b949e',
-  brightBlack: '#484f58',
-  brightRed: '#ffa198',
-  brightGreen: '#aff5b4',
-  brightYellow: '#e3b341',
-  brightBlue: '#a5d6ff',
-  brightMagenta: '#e2c5ff',
-  brightCyan: '#a5f3fc',
-  brightWhite: '#f0f6fc'
+  background: '#1a1b26',
+  foreground: '#c0caf5',
+  cursor: '#c0caf5',
+  selectionBackground: '#33467c',
+  black: '#15161e',
+  red: '#f7768e',
+  green: '#9ece6a',
+  yellow: '#e0af68',
+  blue: '#7aa2f7',
+  magenta: '#bb9af7',
+  cyan: '#7dcfff',
+  white: '#a9b1d6',
+  brightBlack: '#414868',
+  brightRed: '#f7768e',
+  brightGreen: '#9ece6a',
+  brightYellow: '#e0af68',
+  brightBlue: '#7aa2f7',
+  brightMagenta: '#bb9af7',
+  brightCyan: '#7dcfff',
+  brightWhite: '#c0caf5'
 }
 
 export const XTERM_LIGHT: ITheme = {
@@ -73,6 +74,8 @@ export default function TerminalView({ sessionId, isVisible }: TerminalViewProps
     }
     const terminal = new Terminal({
       cursorBlink: true,
+      cursorStyle: 'block',
+      cursorInactiveStyle: 'outline',
       fontSize: 13,
       fontFamily: "'Cascadia Code', 'Consolas', monospace",
       theme: { ...baseXterm, ...xtermOverrides },
@@ -95,6 +98,23 @@ export default function TerminalView({ sessionId, isVisible }: TerminalViewProps
 
     terminalRef.current = terminal
     fitAddonRef.current = fitAddon
+
+    // Dim the terminal when it doesn't have keyboard focus (or the window is
+    // blurred), so it's clear which terminal is active and the CLI's drawn input
+    // block doesn't read as focused when you're typing elsewhere.
+    const applyFocusStyle = (): void => {
+      const el = containerRef.current
+      if (!el) return
+      const focused = document.hasFocus() && document.activeElement === terminal.textarea
+      el.style.transition = 'opacity 0.15s ease'
+      el.style.opacity = focused ? '1' : '0.55'
+    }
+    const textarea = terminal.textarea
+    textarea?.addEventListener('focus', applyFocusStyle)
+    textarea?.addEventListener('blur', applyFocusStyle)
+    window.addEventListener('focus', applyFocusStyle)
+    window.addEventListener('blur', applyFocusStyle)
+    applyFocusStyle()
 
     // Subscribe to theme and override changes for live switching
     let prevTheme = useSettingsStore.getState().theme
@@ -123,11 +143,17 @@ export default function TerminalView({ sessionId, isVisible }: TerminalViewProps
         return false
       }
 
-      // Ctrl+V → read clipboard and write directly to PTY
+      // Ctrl+V → read clipboard and write to PTY with bracketed paste.
+      // Always wrap in bracketed-paste markers so CLI tools (Claude Code, and
+      // PSReadLine) detect a multi-line paste and display it compactly. We don't
+      // gate on terminal.modes.bracketedPasteMode because the enabling escape can
+      // scroll out of the replayed buffer on long-running sessions, leaving the
+      // flag stale/false even though the app does support bracketed paste.
       if (event.ctrlKey && event.key === 'v') {
         event.preventDefault()
         navigator.clipboard.readText().then((text) => {
-          if (text) window.api.writeSession(sessionId, text)
+          if (!text) return
+          window.api.writeSession(sessionId, '\x1b[200~' + text + '\x1b[201~')
         })
         return false
       }
@@ -193,6 +219,10 @@ export default function TerminalView({ sessionId, isVisible }: TerminalViewProps
       unsubTheme()
       cleanup?.()
       resizeObserver.disconnect()
+      textarea?.removeEventListener('focus', applyFocusStyle)
+      textarea?.removeEventListener('blur', applyFocusStyle)
+      window.removeEventListener('focus', applyFocusStyle)
+      window.removeEventListener('blur', applyFocusStyle)
       terminal.dispose()
       terminalRef.current = null
       fitAddonRef.current = null
@@ -207,6 +237,8 @@ export default function TerminalView({ sessionId, isVisible }: TerminalViewProps
           fitAddonRef.current?.fit()
           if (terminalRef.current) {
             window.api.resizeSession(sessionId, terminalRef.current.cols, terminalRef.current.rows)
+            // Focus the CLI so the user can type immediately on open
+            terminalRef.current.focus()
           }
         } catch {
           // ignore

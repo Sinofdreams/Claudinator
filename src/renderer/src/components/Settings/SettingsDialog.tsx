@@ -81,11 +81,26 @@ function derivePATEnvName(name: string): string {
   return 'PAT_' + name.toUpperCase().replace(/[^A-Z0-9]/g, '_')
 }
 
+function formatModelName(model: string): string {
+  if (!model) return 'Latest (auto)'
+  // Strip trailing date snapshot like -20250428
+  const cleaned = model.replace(/-\d{8}$/, '')
+  const parts = cleaned.split('-')
+  if (parts[0] === 'claude' && parts.length >= 4) {
+    const family = parts[1].charAt(0).toUpperCase() + parts[1].slice(1)
+    const version = parts.slice(2).join('.')
+    return `Claude ${family} ${version}`
+  }
+  return model
+}
+
 export default function SettingsDialog({ onClose }: SettingsDialogProps): JSX.Element {
   const store = useSettingsStore()
 
   const [activeSection, setActiveSection] = useState<Section>('general')
   const [projectDir, setProjectDir] = useState(store.defaultProjectDir)
+  const [notesDir, setNotesDir] = useState(store.notesDir ?? '')
+  const [claudeModel] = useState(store.claudeModel ?? '')
   const [localRules, setLocalRules] = useState<string[]>(store.rules ?? [])
   const [localPats, setLocalPats] = useState<LocalPAT[]>(store.pats ?? [])
   const [newRule, setNewRule] = useState('')
@@ -93,6 +108,7 @@ export default function SettingsDialog({ onClose }: SettingsDialogProps): JSX.El
   const [newPatValue, setNewPatValue] = useState('')
   const [revealedPats, setRevealedPats] = useState<Set<string>>(new Set())
   const [patError, setPatError] = useState('')
+  const [importMsg, setImportMsg] = useState<{ text: string; type: 'success' | 'warn' | 'error' } | null>(null)
   const [initialTheme] = useState(store.theme)
   const [initialActiveCustomId] = useState(store.activeCustomThemeId)
   const [initialOverrides] = useState<ThemeOverrides>(() => JSON.parse(JSON.stringify(store.themeOverrides)))
@@ -305,6 +321,11 @@ export default function SettingsDialog({ onClose }: SettingsDialogProps): JSX.El
     if (folder) setProjectDir(folder)
   }
 
+  const handlePickNotesFolder = async (): Promise<void> => {
+    const folder = await window.api.pickFolder()
+    if (folder) setNotesDir(folder)
+  }
+
   const handleAddRule = (): void => {
     const trimmed = newRule.trim()
     if (!trimmed) return
@@ -346,6 +367,8 @@ export default function SettingsDialog({ onClose }: SettingsDialogProps): JSX.El
   const handleSave = async (): Promise<void> => {
     await window.api.saveSettings({
       defaultProjectDir: projectDir.trim(),
+      claudeModel: claudeModel.trim(),
+      notesDir: notesDir.trim(),
       rules: localRules,
       pats: localPats,
       theme: store.theme,
@@ -450,6 +473,43 @@ export default function SettingsDialog({ onClose }: SettingsDialogProps): JSX.El
                     Pre-fills the project directory when creating new cards.
                   </p>
                 </div>
+
+                <div style={{ marginBottom: 24 }}>
+                  <label style={labelStyle}>Notes Folder</label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      value={notesDir}
+                      onChange={(e) => setNotesDir(e.target.value)}
+                      placeholder="Default: app data folder"
+                      style={{ ...inputStyle, flex: 1 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={handlePickNotesFolder}
+                      style={{
+                        borderRadius: 8,
+                        backgroundColor: 'var(--bg-button)',
+                        padding: '10px 16px',
+                        fontSize: 14,
+                        color: 'var(--text-primary)',
+                        border: 'none',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M2 4.5V12a1.5 1.5 0 001.5 1.5h9A1.5 1.5 0 0014 12V6.5A1.5 1.5 0 0012.5 5H8L6.5 3H3.5A1.5 1.5 0 002 4.5z" />
+                      </svg>
+                      Browse
+                    </button>
+                  </div>
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+                    Where Notes &amp; Docs markdown files are stored. Point it at a real folder (e.g. a repo) to edit and version them outside the app. Leave blank to use the default app-data location.
+                  </p>
+                </div>
               </div>
             )}
 
@@ -460,20 +520,85 @@ export default function SettingsDialog({ onClose }: SettingsDialogProps): JSX.El
                     Instructions applied to every Claude Code session via CLAUDE.md.
                   </p>
                   {projectDir.trim() && (
-                    <button
-                      type="button"
-                      onClick={() => window.api.openFile(projectDir.trim() + '\\CLAUDE.md')}
-                      style={smallBtnStyle}
-                      title="Open CLAUDE.md in default editor"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M9 2H4a1 1 0 00-1 1v10a1 1 0 001 1h8a1 1 0 001-1V6L9 2z" />
-                        <path d="M9 2v4h4" />
-                      </svg>
-                      Open CLAUDE.md
-                    </button>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setImportMsg(null)
+                          const result = await window.api.readClaudeMdRules(projectDir.trim())
+                          if (result.error) {
+                            setImportMsg({ text: result.error, type: 'error' })
+                            return
+                          }
+                          if (result.rules.length === 0) {
+                            setImportMsg({ text: 'No rules found in CLAUDE.md (add markdown list items like "- rule text")', type: 'warn' })
+                            return
+                          }
+                          const newRules = result.rules.filter((r) => !localRules.includes(r))
+                          if (newRules.length === 0) {
+                            setImportMsg({ text: `Found ${result.rules.length} rule${result.rules.length > 1 ? 's' : ''}, but all already exist`, type: 'warn' })
+                            return
+                          }
+                          setLocalRules((prev) => [...prev, ...newRules])
+                          setImportMsg({ text: `Imported ${newRules.length} rule${newRules.length > 1 ? 's' : ''}`, type: 'success' })
+                        }}
+                        style={smallBtnStyle}
+                        title="Import rules from CLAUDE.md"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M8 3v7M5 7l3 3 3-3" />
+                          <path d="M3 12h10" />
+                        </svg>
+                        Import Rules
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => window.api.openFile(projectDir.trim() + '\\CLAUDE.md')}
+                        style={{ ...smallBtnStyle, backgroundColor: '#dc2626', color: '#fff' }}
+                        title="Open CLAUDE.md in default editor"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M9 2H4a1 1 0 00-1 1v10a1 1 0 001 1h8a1 1 0 001-1V6L9 2z" />
+                          <path d="M9 2v4h4" />
+                        </svg>
+                        Open CLAUDE.md
+                      </button>
+                    </div>
                   )}
                 </div>
+
+                {importMsg && (
+                  <div style={{
+                    padding: '8px 12px',
+                    borderRadius: 6,
+                    marginBottom: 10,
+                    fontSize: 12,
+                    fontWeight: 500,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    backgroundColor: importMsg.type === 'error' ? 'rgba(239,68,68,0.15)'
+                      : importMsg.type === 'warn' ? 'rgba(234,179,8,0.15)'
+                      : 'rgba(34,197,94,0.15)',
+                    color: importMsg.type === 'error' ? '#f87171'
+                      : importMsg.type === 'warn' ? '#eab308'
+                      : '#22c55e',
+                    border: `1px solid ${importMsg.type === 'error' ? 'rgba(239,68,68,0.3)'
+                      : importMsg.type === 'warn' ? 'rgba(234,179,8,0.3)'
+                      : 'rgba(34,197,94,0.3)'}`,
+                  }}>
+                    <span>{importMsg.text}</span>
+                    <button
+                      type="button"
+                      onClick={() => setImportMsg(null)}
+                      style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, marginLeft: 'auto', display: 'flex' }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                        <path d="M12 4L4 12M4 4l8 8" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
 
                 {/* Existing rules list */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
@@ -822,6 +947,26 @@ export default function SettingsDialog({ onClose }: SettingsDialogProps): JSX.El
                 <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '4px 0 0' }}>
                   v{appVersion || '...'}
                 </p>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    marginTop: 12,
+                    padding: '5px 12px',
+                    borderRadius: 8,
+                    backgroundColor: 'var(--bg-surface)',
+                    border: '1px solid var(--border-primary)',
+                  }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" style={{ color: 'var(--text-secondary)' }} strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="2" y="3" width="12" height="10" rx="1.5" />
+                    <path d="M5 7h6M5 9.5h4" />
+                  </svg>
+                  <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)' }}>
+                    {formatModelName(claudeModel)}
+                  </span>
+                </div>
                 <p style={{
                   fontSize: 13,
                   color: 'var(--text-secondary)',

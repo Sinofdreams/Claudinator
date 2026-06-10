@@ -11,6 +11,8 @@ type Theme = 'dark' | 'light'
 
 interface SettingsState {
   defaultProjectDir: string
+  claudeModel: string
+  notesDir: string
   rules: string[]
   pats: PAT[]
   theme: Theme
@@ -23,6 +25,7 @@ interface SettingsState {
 interface SettingsActions {
   load: () => Promise<void>
   setDefaultProjectDir: (dir: string) => Promise<void>
+  setNotesDir: (dir: string) => Promise<void>
   addRule: (rule: string) => void
   removeRule: (index: number) => void
   addPat: (pat: PAT) => void
@@ -66,6 +69,8 @@ function applyCssOverrides(overrides: ThemeTemplate): void {
 
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
   defaultProjectDir: '',
+  claudeModel: '',
+  notesDir: '',
   rules: [],
   pats: [],
   theme: 'dark',
@@ -90,6 +95,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     applyCssOverrides(effectiveOverrides)
     set({
       defaultProjectDir: settings.defaultProjectDir,
+      claudeModel: settings.claudeModel ?? '',
+      notesDir: settings.notesDir ?? '',
       rules: settings.rules ?? [],
       pats: settings.pats ?? [],
       theme,
@@ -102,8 +109,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
 
   setDefaultProjectDir: async (dir: string) => {
     set({ defaultProjectDir: dir })
-    const { rules, pats, theme, themeOverrides, customThemes, activeCustomThemeId } = get()
-    await window.api.saveSettings({ defaultProjectDir: dir, rules, pats, theme, themeOverrides, customThemes, activeCustomThemeId })
+    const { claudeModel, notesDir, rules, pats, theme, themeOverrides, customThemes, activeCustomThemeId } = get()
+    await window.api.saveSettings({ defaultProjectDir: dir, claudeModel, notesDir, rules, pats, theme, themeOverrides, customThemes, activeCustomThemeId })
+  },
+
+  setNotesDir: async (dir: string) => {
+    set({ notesDir: dir })
+    const { defaultProjectDir, claudeModel, rules, pats, theme, themeOverrides, customThemes, activeCustomThemeId } = get()
+    await window.api.saveSettings({ defaultProjectDir, claudeModel, notesDir: dir, rules, pats, theme, themeOverrides, customThemes, activeCustomThemeId })
   },
 
   addRule: (rule: string) => {
@@ -123,8 +136,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   },
 
   saveAll: async () => {
-    const { defaultProjectDir, rules, pats, theme, themeOverrides, customThemes, activeCustomThemeId } = get()
-    await window.api.saveSettings({ defaultProjectDir, rules, pats, theme, themeOverrides, customThemes, activeCustomThemeId })
+    const { defaultProjectDir, claudeModel, notesDir, rules, pats, theme, themeOverrides, customThemes, activeCustomThemeId } = get()
+    await window.api.saveSettings({ defaultProjectDir, claudeModel, notesDir, rules, pats, theme, themeOverrides, customThemes, activeCustomThemeId })
   },
 
   setTheme: (theme: Theme) => {
@@ -138,8 +151,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       applyCssOverrides(themeOverrides[theme] ?? {})
     }
     set({ theme })
-    const { defaultProjectDir, rules, pats } = get()
-    window.api.saveSettings({ defaultProjectDir, rules, pats, theme, themeOverrides, customThemes, activeCustomThemeId })
+    const { defaultProjectDir, claudeModel, notesDir, rules, pats } = get()
+    window.api.saveSettings({ defaultProjectDir, claudeModel, notesDir, rules, pats, theme, themeOverrides, customThemes, activeCustomThemeId })
     window.api.changeTheme(theme)
   },
 
@@ -167,8 +180,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     applyThemeAttribute(custom.base)
     applyCssOverrides(custom.overrides)
     set({ theme: custom.base, activeCustomThemeId: id })
-    const { defaultProjectDir, rules, pats, themeOverrides } = get()
-    window.api.saveSettings({ defaultProjectDir, rules, pats, theme: custom.base, themeOverrides, customThemes, activeCustomThemeId: id })
+    const { defaultProjectDir, claudeModel, notesDir, rules, pats, themeOverrides } = get()
+    window.api.saveSettings({ defaultProjectDir, claudeModel, notesDir, rules, pats, theme: custom.base, themeOverrides, customThemes, activeCustomThemeId: id })
     window.api.changeTheme(custom.base)
   },
 
@@ -177,8 +190,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const { themeOverrides } = get()
     applyCssOverrides(themeOverrides[theme] ?? {})
     set({ theme, activeCustomThemeId: null })
-    const { defaultProjectDir, rules, pats, customThemes } = get()
-    window.api.saveSettings({ defaultProjectDir, rules, pats, theme, themeOverrides, customThemes, activeCustomThemeId: null })
+    const { defaultProjectDir, claudeModel, notesDir, rules, pats, customThemes } = get()
+    window.api.saveSettings({ defaultProjectDir, claudeModel, notesDir, rules, pats, theme, themeOverrides, customThemes, activeCustomThemeId: null })
     window.api.changeTheme(theme)
   },
 

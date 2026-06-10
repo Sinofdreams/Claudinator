@@ -186,11 +186,8 @@ export default function Board(): JSX.Element {
         reorderCards(activeCol, newOrder)
       }
     } else {
-      // Cross-column move
-      const overColumn = columns.find((c) => c.id === overCol)!
-      const overIndex = overColumn.cardIds.indexOf(overId)
-      const insertIndex = overIndex >= 0 ? overIndex : overColumn.cardIds.length
-      moveCard(activeCardId, overCol, insertIndex)
+      // Cross-column move — always drop at the top of the target column
+      moveCard(activeCardId, overCol, 0)
     }
 
     pendingOverColumnRef.current = null

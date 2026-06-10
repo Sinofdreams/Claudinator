@@ -4,6 +4,7 @@ import { useSessionStore } from './stores/session-store'
 import { useSettingsStore } from './stores/settings-store'
 import Board from './components/Board/Board'
 import SessionsPanel from './components/Sessions/SessionsPanel'
+import NotesPanel from './components/Notes/NotesPanel'
 import Sidebar from './components/Layout/Sidebar'
 import SessionModal from './components/Terminal/SessionModal'
 import CardDialog from './components/Board/CardDialog'
@@ -43,7 +44,9 @@ export default function App(): JSX.Element {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {currentView === 'board' ? <Board /> : <SessionsPanel />}
+        {currentView === 'board' && <Board />}
+        {currentView === 'sessions' && <SessionsPanel />}
+        {currentView === 'notes' && <NotesPanel />}
       </div>
 
       {/* Session modal overlay */}

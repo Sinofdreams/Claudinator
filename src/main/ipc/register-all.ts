@@ -5,6 +5,7 @@ import { registerSessionIpc } from './session-ipc'
 import { registerStatsIpc } from './stats-ipc'
 import { registerSettingsIpc } from './settings-ipc'
 import { registerUpdateIpc } from './update-ipc'
+import { registerNotesIpc } from './notes-ipc'
 
 export function registerAllIpc(): void {
   registerBoardIpc()
@@ -14,4 +15,5 @@ export function registerAllIpc(): void {
   registerStatsIpc()
   registerSettingsIpc()
   registerUpdateIpc()
+  registerNotesIpc()
 }

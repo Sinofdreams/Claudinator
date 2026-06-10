@@ -12,6 +12,8 @@ export interface PAT {
 
 export interface Settings {
   defaultProjectDir: string
+  claudeModel: string
+  notesDir: string
   rules: string[]
   pats: PAT[]
   theme: 'dark' | 'light'
@@ -29,7 +31,7 @@ function getSettingsPath(): string {
 }
 
 function createDefaultSettings(): Settings {
-  return { defaultProjectDir: '', rules: [], pats: [], theme: 'dark', themeOverrides: { dark: {}, light: {} }, customThemes: [], activeCustomThemeId: null }
+  return { defaultProjectDir: '', claudeModel: 'claude-opus-4-8', notesDir: '', rules: [], pats: [], theme: 'dark', themeOverrides: { dark: {}, light: {} }, customThemes: [], activeCustomThemeId: null }
 }
 
 export async function loadSettings(): Promise<Settings> {

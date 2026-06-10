@@ -101,6 +101,22 @@ export default function Sidebar(): JSX.Element {
         )}
       </button>
 
+      {/* Notes */}
+      <button
+        onClick={() => setCurrentView('notes')}
+        className="flex h-9 w-9 items-center justify-center rounded-lg cursor-pointer transition-colors"
+        style={currentView === 'notes'
+          ? { backgroundColor: 'var(--bg-active)', color: 'var(--text-primary)' }
+          : { color: 'var(--text-muted)' }
+        }
+        title="Notes &amp; Docs"
+      >
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 1.5h5L13 5v9.5a1 1 0 01-1 1H4a1 1 0 01-1-1v-12a1 1 0 011-1z" />
+          <path d="M9 1.5V5h4M5.5 8.5h5M5.5 11h3.5" />
+        </svg>
+      </button>
+
       <div className="flex-1" />
 
       {/* Token usage */}

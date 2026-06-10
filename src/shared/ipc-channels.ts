@@ -17,6 +17,7 @@ export const IPC = {
   SESSION_LIST: 'session:list',
   SESSION_CWD: 'session:cwd',
   SESSION_CLAUDE_ID: 'session:claude-id',
+  SESSION_CONTEXT: 'session:context',
 
   // Git
   GIT_STATUS: 'git:status',
@@ -29,6 +30,20 @@ export const IPC = {
   SETTINGS_LOAD: 'settings:load',
   SETTINGS_SAVE: 'settings:save',
   SETTINGS_ADD_RULE: 'settings:add-rule',
+
+  // CLAUDE.md
+  CLAUDE_MD_READ: 'claudemd:read',
+
+  // Notes (markdown library)
+  NOTES_LIST: 'notes:list',
+  NOTES_READ: 'notes:read',
+  NOTES_SAVE: 'notes:save',
+  NOTES_CREATE: 'notes:create',
+  NOTES_DELETE: 'notes:delete',
+  NOTES_RENAME: 'notes:rename',
+  NOTES_DIR: 'notes:dir',
+  NOTES_GET_SESSION: 'notes:get-session',
+  NOTES_SET_SESSION: 'notes:set-session',
 
   // Theme
   THEME_CHANGE: 'theme:change',

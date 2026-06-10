@@ -25,3 +25,4 @@ publish:
   - provider: github
     owner: Sinofdreams
     repo: Claudinator
+    releaseType: release

@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '@shared/ipc-channels'
-import { BoardState, SessionInfo, ThemeOverrides, CustomTheme } from '@shared/models'
+import { BoardState, SessionInfo, ThemeOverrides, CustomTheme, NoteMeta } from '@shared/models'
 
 const api = {
   // Board
@@ -35,6 +35,9 @@ const api = {
   getSessionCwd: (sessionId: string): Promise<string | null> =>
     ipcRenderer.invoke(IPC.SESSION_CWD, sessionId),
 
+  getContextInfo: (sessionId: string): Promise<string | null> =>
+    ipcRenderer.invoke(IPC.SESSION_CONTEXT, sessionId),
+
   // Git
   getGitStatus: (
     projectDir: string,
@@ -57,6 +60,8 @@ const api = {
   // Settings
   loadSettings: (): Promise<{
     defaultProjectDir: string
+    claudeModel: string
+    notesDir: string
     rules: string[]
     pats: { id: string; name: string; value: string }[]
     theme: 'dark' | 'light'
@@ -66,6 +71,8 @@ const api = {
   }> => ipcRenderer.invoke(IPC.SETTINGS_LOAD),
   saveSettings: (settings: {
     defaultProjectDir: string
+    claudeModel: string
+    notesDir: string
     rules: string[]
     pats: { id: string; name: string; value: string }[]
     theme: 'dark' | 'light'
@@ -83,6 +90,23 @@ const api = {
     ipcRenderer.invoke(IPC.THEME_EXPORT, themeJson),
   openFile: (filePath: string): Promise<string> =>
     ipcRenderer.invoke(IPC.OPEN_FILE, filePath),
+  readClaudeMdRules: (projectDir: string): Promise<{ rules: string[]; error?: string }> =>
+    ipcRenderer.invoke(IPC.CLAUDE_MD_READ, projectDir),
+
+  // Notes (markdown library)
+  listNotes: (): Promise<NoteMeta[]> => ipcRenderer.invoke(IPC.NOTES_LIST),
+  readNote: (name: string): Promise<string> => ipcRenderer.invoke(IPC.NOTES_READ, name),
+  saveNote: (name: string, content: string): Promise<void> =>
+    ipcRenderer.invoke(IPC.NOTES_SAVE, name, content),
+  createNote: (name: string): Promise<string> => ipcRenderer.invoke(IPC.NOTES_CREATE, name),
+  deleteNote: (name: string): Promise<void> => ipcRenderer.invoke(IPC.NOTES_DELETE, name),
+  renameNote: (oldName: string, newName: string): Promise<string> =>
+    ipcRenderer.invoke(IPC.NOTES_RENAME, oldName, newName),
+  getNotesDir: (): Promise<string> => ipcRenderer.invoke(IPC.NOTES_DIR),
+  getNoteSession: (name: string): Promise<string | null> =>
+    ipcRenderer.invoke(IPC.NOTES_GET_SESSION, name),
+  setNoteSession: (name: string, sessionId: string): Promise<void> =>
+    ipcRenderer.invoke(IPC.NOTES_SET_SESSION, name, sessionId),
 
   // App / Update
   getAppVersion: (): Promise<string> => ipcRenderer.invoke(IPC.APP_VERSION),

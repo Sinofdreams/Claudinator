@@ -22,7 +22,8 @@ export function registerSessionIpc(): void {
         args.projectDir,
         args.claudeSessionId,
         settings.rules,
-        settings.pats
+        settings.pats,
+        settings.claudeModel
       )
 
       const win = BrowserWindow.fromWebContents(event.sender)
@@ -74,5 +75,9 @@ export function registerSessionIpc(): void {
 
   ipcMain.handle(IPC.SESSION_CWD, async (_event, sessionId: string) => {
     return sessionManager.getCwd(sessionId)
+  })
+
+  ipcMain.handle(IPC.SESSION_CONTEXT, async (_event, sessionId: string) => {
+    return sessionManager.getContextInfo(sessionId)
   })
 }

@@ -27,6 +27,13 @@ export interface BoardState {
   lastSaved: number
 }
 
+export interface NoteMeta {
+  name: string // filename without .md extension
+  createdAt: number
+  updatedAt: number
+  size: number
+}
+
 export type SessionStatus = 'starting' | 'running' | 'waiting' | 'stopped' | 'error'
 
 export interface SessionInfo {
