@@ -1,0 +1,4 @@
+provider: github
+owner: Sinofdreams
+repo: Claudinator
+updaterCacheDirName: claude-orchestrator-updater
