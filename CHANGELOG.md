@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [0.1.3] - 2026-06-12
 
+### Added
+- Resizable divider between the markdown editor and live preview in Notes & Docs (drag to set the split, clamped 20–80%).
+
 ### Fixed
 - Dim the title-bar caption buttons while a full-screen modal is open, so the OS-drawn button strip no longer stays bright over the dimmed backdrop (session modal, settings, card dialog, delete confirmation).
 

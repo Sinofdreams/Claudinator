@@ -39,7 +39,10 @@ export default function NotesPanel(): JSX.Element {
   const [renameValue, setRenameValue] = useState('')
   const [cliVisible, setCliVisible] = useState(true)
   const [cliHeight, setCliHeight] = useState(260)
+  const [editorPct, setEditorPct] = useState(50)
   const [sessionByNote, setSessionByNote] = useState<Record<string, string>>({})
+
+  const splitRef = useRef<HTMLDivElement>(null)
 
   const settingsNotesDir = useSettingsStore((s) => s.notesDir)
   const [notesFolder, setNotesFolder] = useState('')
@@ -212,6 +215,28 @@ export default function NotesPanel(): JSX.Element {
       document.body.style.cursor = ''
     }
     document.body.style.cursor = 'row-resize'
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
+  // Horizontal resize for the editor | preview split (drag right = wider editor)
+  const startSplitResize = (e: React.MouseEvent): void => {
+    e.preventDefault()
+    const container = splitRef.current
+    if (!container) return
+    const rect = container.getBoundingClientRect()
+    const onMove = (ev: MouseEvent): void => {
+      const pct = ((ev.clientX - rect.left) / rect.width) * 100
+      setEditorPct(Math.min(80, Math.max(20, pct)))
+    }
+    const onUp = (): void => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
   }
@@ -395,11 +420,11 @@ export default function NotesPanel(): JSX.Element {
 
             {/* Body: editor split — left column has the markdown editor with the
                 CLI docked at its bottom; right column is the live preview. */}
-            <div className="flex flex-1 overflow-hidden">
+            <div ref={splitRef} className="flex flex-1 overflow-hidden">
               {/* Left column: markdown editor (top) + CLI (bottom) */}
               <div
-                className="flex flex-col"
-                style={{ width: '50%', borderRight: '1px solid var(--border-primary)' }}
+                className="flex flex-col shrink-0"
+                style={{ width: `${editorPct}%` }}
               >
                 <textarea
                   value={content}
@@ -478,10 +503,18 @@ export default function NotesPanel(): JSX.Element {
                 )}
               </div>
 
+              {/* Drag handle between editor and preview */}
+              <div
+                onMouseDown={startSplitResize}
+                title="Drag to resize"
+                className="shrink-0 transition-colors hover:bg-[var(--bg-active)]"
+                style={{ width: 5, cursor: 'col-resize', borderLeft: '1px solid var(--border-primary)' }}
+              />
+
               {/* Right column: live preview */}
               <div
-                className="md-preview overflow-y-auto"
-                style={{ width: '50%', height: '100%', padding: '16px 22px' }}
+                className="md-preview flex-1 overflow-y-auto"
+                style={{ height: '100%', padding: '16px 22px' }}
                 dangerouslySetInnerHTML={{ __html: previewHtml }}
               />
             </div>
