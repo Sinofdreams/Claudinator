@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSessionStore } from '@/stores/session-store'
 import { useBoardStore } from '@/stores/board-store'
 import SettingsDialog from '@/components/Settings/SettingsDialog'
+import logoUrl from '@/assets/icon.png'
 
 function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
@@ -43,12 +44,11 @@ export default function Sidebar(): JSX.Element {
   return (
     <div className="flex h-full w-14 shrink-0 flex-col items-center pb-4 gap-2.5" style={{ paddingTop: 12, borderRight: '1px solid var(--border-subtle)', backgroundColor: 'var(--bg-primary)' }}>
       {/* Logo */}
-      <div className="mb-4 flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600">
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-          <rect x="2" y="3" width="4.5" height="14" rx="1.2" fill="white" opacity="0.95" />
-          <rect x="7.75" y="3" width="4.5" height="10" rx="1.2" fill="white" opacity="0.7" />
-          <rect x="13.5" y="3" width="4.5" height="12" rx="1.2" fill="white" opacity="0.85" />
-        </svg>
+      <div
+        className="mb-4 flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg"
+        style={{ border: '1px solid var(--border-subtle)' }}
+      >
+        <img src={logoUrl} alt="Claude Code Orchestrator" className="h-full w-full object-cover" />
       </div>
 
       {/* Add */}

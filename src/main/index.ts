@@ -49,6 +49,9 @@ async function createWindow(): Promise<void> {
     },
     title: 'Claude Code Orchestrator',
     backgroundColor: tb.color,
+    // Packaged builds get the icon embedded in the exe; in dev point the window
+    // at the source icon so the taskbar/window show the real branding too.
+    ...(is.dev ? { icon: join(__dirname, '../../build/icon.png') } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
