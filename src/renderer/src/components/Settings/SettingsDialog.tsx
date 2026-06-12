@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useSettingsStore } from '@/stores/settings-store'
+import { useTitleBarDim } from '@/hooks/useTitleBarDim'
 import ThemeEditor from './ThemeEditor'
 import type { ThemeTemplate, ThemeOverrides, CustomTheme } from '@shared/models'
 
@@ -96,6 +97,8 @@ function formatModelName(model: string): string {
 
 export default function SettingsDialog({ onClose }: SettingsDialogProps): JSX.Element {
   const store = useSettingsStore()
+
+  useTitleBarDim()
 
   const [activeSection, setActiveSection] = useState<Section>('general')
   const [projectDir, setProjectDir] = useState(store.defaultProjectDir)

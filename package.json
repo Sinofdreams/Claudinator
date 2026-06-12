@@ -1,6 +1,6 @@
 {
   "name": "claude-orchestrator",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Desktop Kanban board for managing Claude Code CLI sessions",
   "main": "./out/main/index.js",
   "scripts": {

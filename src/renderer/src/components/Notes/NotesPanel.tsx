@@ -39,10 +39,15 @@ export default function NotesPanel(): JSX.Element {
   const [renameValue, setRenameValue] = useState('')
   const [cliVisible, setCliVisible] = useState(true)
   const [cliHeight, setCliHeight] = useState(260)
+  const [editorPct, setEditorPct] = useState(50)
   const [sessionByNote, setSessionByNote] = useState<Record<string, string>>({})
 
+  const splitRef = useRef<HTMLDivElement>(null)
+
   const settingsNotesDir = useSettingsStore((s) => s.notesDir)
+  const theme = useSettingsStore((s) => s.theme)
   const [notesFolder, setNotesFolder] = useState('')
+  const [previewPopped, setPreviewPopped] = useState(false)
 
   const activeSessionId = activeName ? sessionByNote[activeName] ?? null : null
 
@@ -216,7 +221,53 @@ export default function NotesPanel(): JSX.Element {
     window.addEventListener('mouseup', onUp)
   }
 
+  // Horizontal resize for the editor | preview split (drag right = wider editor)
+  const startSplitResize = (e: React.MouseEvent): void => {
+    e.preventDefault()
+    const container = splitRef.current
+    if (!container) return
+    const rect = container.getBoundingClientRect()
+    const onMove = (ev: MouseEvent): void => {
+      const pct = ((ev.clientX - rect.left) / rect.width) * 100
+      setEditorPct(Math.min(80, Math.max(20, pct)))
+    }
+    const onUp = (): void => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
   const previewHtml = useMemo(() => renderMarkdown(content), [content])
+
+  // Stream content/theme/title to the detached preview window while it's open.
+  useEffect(() => {
+    if (previewPopped) {
+      window.api.updatePreview({ html: previewHtml, theme, title: activeName ?? '' })
+    }
+  }, [previewPopped, previewHtml, theme, activeName])
+
+  // Reset the toggle if the user closes the preview window directly.
+  useEffect(() => {
+    const unsub = window.api.onPreviewClosed(() => setPreviewPopped(false))
+    return unsub
+  }, [])
+
+  const togglePreviewPopout = async (): Promise<void> => {
+    if (previewPopped) {
+      await window.api.closePreview()
+      setPreviewPopped(false)
+    } else {
+      await window.api.openPreview()
+      setPreviewPopped(true)
+      window.api.updatePreview({ html: previewHtml, theme, title: activeName ?? '' })
+    }
+  }
 
   const filtered = notes.filter((n) => n.name.toLowerCase().includes(search.toLowerCase()))
 
@@ -375,6 +426,25 @@ export default function NotesPanel(): JSX.Element {
               </span>
 
               <button
+                onClick={togglePreviewPopout}
+                title={previewPopped ? 'Close detached preview window' : 'Open preview in a separate window'}
+                className="flex items-center justify-center cursor-pointer transition-colors"
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 7,
+                  background: 'none',
+                  border: `1px solid ${previewPopped ? 'var(--accent)' : 'var(--border-primary)'}`,
+                  color: previewPopped ? 'var(--accent)' : 'var(--text-muted)'
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M6.5 3H3.5A1.5 1.5 0 002 4.5v8A1.5 1.5 0 003.5 14h8a1.5 1.5 0 001.5-1.5v-3" />
+                  <path d="M9.5 2.5H13.5V6.5M13 3l-5.5 5.5" />
+                </svg>
+              </button>
+
+              <button
                 onClick={handleDelete}
                 title="Delete note"
                 className="flex items-center justify-center cursor-pointer transition-colors"
@@ -395,11 +465,11 @@ export default function NotesPanel(): JSX.Element {
 
             {/* Body: editor split — left column has the markdown editor with the
                 CLI docked at its bottom; right column is the live preview. */}
-            <div className="flex flex-1 overflow-hidden">
+            <div ref={splitRef} className="flex flex-1 overflow-hidden">
               {/* Left column: markdown editor (top) + CLI (bottom) */}
               <div
-                className="flex flex-col"
-                style={{ width: '50%', borderRight: '1px solid var(--border-primary)' }}
+                className="flex flex-col shrink-0"
+                style={{ width: `${editorPct}%` }}
               >
                 <textarea
                   value={content}
@@ -478,10 +548,18 @@ export default function NotesPanel(): JSX.Element {
                 )}
               </div>
 
+              {/* Drag handle between editor and preview */}
+              <div
+                onMouseDown={startSplitResize}
+                title="Drag to resize"
+                className="shrink-0 transition-colors hover:bg-[var(--bg-active)]"
+                style={{ width: 5, cursor: 'col-resize', borderLeft: '1px solid var(--border-primary)' }}
+              />
+
               {/* Right column: live preview */}
               <div
-                className="md-preview overflow-y-auto"
-                style={{ width: '50%', height: '100%', padding: '16px 22px' }}
+                className="md-preview flex-1 overflow-y-auto"
+                style={{ height: '100%', padding: '16px 22px' }}
                 dangerouslySetInnerHTML={{ __html: previewHtml }}
               />
             </div>

@@ -82,6 +82,8 @@ const api = {
   }): Promise<void> => ipcRenderer.invoke(IPC.SETTINGS_SAVE, settings),
   changeTheme: (theme: 'dark' | 'light'): Promise<void> =>
     ipcRenderer.invoke(IPC.THEME_CHANGE, theme),
+  setTitleBarDim: (dimmed: boolean): Promise<void> =>
+    ipcRenderer.invoke(IPC.TITLEBAR_DIM, dimmed),
   addRule: (rule: string): Promise<string[]> =>
     ipcRenderer.invoke(IPC.SETTINGS_ADD_RULE, rule),
   importTheme: (): Promise<Record<string, unknown> | null> =>
@@ -124,6 +126,30 @@ const api = {
     }
     ipcRenderer.on(IPC.UPDATE_STATUS, handler)
     return () => ipcRenderer.removeListener(IPC.UPDATE_STATUS, handler)
+  },
+
+  // Detached markdown preview window
+  openPreview: (): Promise<void> => ipcRenderer.invoke(IPC.PREVIEW_OPEN),
+  closePreview: (): Promise<void> => ipcRenderer.invoke(IPC.PREVIEW_CLOSE),
+  updatePreview: (data: { html: string; theme: 'dark' | 'light'; title: string }): void =>
+    ipcRenderer.send(IPC.PREVIEW_UPDATE, data),
+  previewReady: (): void => ipcRenderer.send(IPC.PREVIEW_READY),
+  onPreviewData: (
+    callback: (data: { html: string; theme: 'dark' | 'light'; title: string }) => void
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      data: { html: string; theme: 'dark' | 'light'; title: string }
+    ): void => {
+      callback(data)
+    }
+    ipcRenderer.on(IPC.PREVIEW_DATA, handler)
+    return () => ipcRenderer.removeListener(IPC.PREVIEW_DATA, handler)
+  },
+  onPreviewClosed: (callback: () => void): (() => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on(IPC.PREVIEW_CLOSED, handler)
+    return () => ipcRenderer.removeListener(IPC.PREVIEW_CLOSED, handler)
   },
 
   // Session event listeners

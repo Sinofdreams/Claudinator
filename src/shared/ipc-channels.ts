@@ -49,6 +49,7 @@ export const IPC = {
   THEME_CHANGE: 'theme:change',
   THEME_IMPORT: 'theme:import',
   THEME_EXPORT: 'theme:export',
+  TITLEBAR_DIM: 'titlebar:dim',
 
   // File
   OPEN_FILE: 'file:open',
@@ -58,5 +59,13 @@ export const IPC = {
   UPDATE_CHECK: 'update:check',
   UPDATE_DOWNLOAD: 'update:download',
   UPDATE_INSTALL: 'update:install',
-  UPDATE_STATUS: 'update:status'
+  UPDATE_STATUS: 'update:status',
+
+  // Detached markdown preview window
+  PREVIEW_OPEN: 'preview:open',
+  PREVIEW_CLOSE: 'preview:close',
+  PREVIEW_UPDATE: 'preview:update',
+  PREVIEW_DATA: 'preview:data',
+  PREVIEW_READY: 'preview:ready',
+  PREVIEW_CLOSED: 'preview:closed'
 } as const

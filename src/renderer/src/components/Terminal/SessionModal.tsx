@@ -5,6 +5,7 @@ import TerminalView from './TerminalView'
 import GitPanel from './GitPanel'
 import { getTagColor } from '@/utils/tag-colors'
 import { useSettingsStore } from '@/stores/settings-store'
+import { useTitleBarDim } from '@/hooks/useTitleBarDim'
 
 interface SessionModalProps {
   sessionId: string
@@ -29,6 +30,8 @@ export default function SessionModal({ sessionId }: SessionModalProps): JSX.Elem
   const isResizing = useRef(false)
 
   const hasProjectDir = Boolean(card?.projectDir)
+
+  useTitleBarDim()
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault()

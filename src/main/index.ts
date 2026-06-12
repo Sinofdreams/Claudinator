@@ -11,9 +11,28 @@ const THEME_TITLEBAR = {
   light: { color: '#ffffff', symbolColor: '#59636e' }
 } as const
 
+// Dimmed caption-button colors used while a full-screen modal is open. The OS
+// draws the title-bar overlay on top of everything, so the React backdrop can't
+// cover it — instead we darken the overlay to match the dimmed window. Values are
+// --bg-overlay composited over --bg-primary (dark: 0.6 over #0d1117, light: 0.3 over #fff).
+const THEME_TITLEBAR_DIM = {
+  dark: { color: '#050709', symbolColor: '#9198a1' },
+  light: { color: '#b3b3b3', symbolColor: '#59636e' }
+} as const
+
+let currentTheme: 'dark' | 'light' = 'dark'
+let dimDepth = 0
+
+function refreshTitleBar(win: BrowserWindow): void {
+  const palette = dimDepth > 0 ? THEME_TITLEBAR_DIM : THEME_TITLEBAR
+  const colors = palette[currentTheme] ?? palette.dark
+  win.setTitleBarOverlay({ color: colors.color, symbolColor: colors.symbolColor, height: 36 })
+}
+
 async function createWindow(): Promise<void> {
   const settings = await loadSettings()
-  const tb = THEME_TITLEBAR[settings.theme] ?? THEME_TITLEBAR.dark
+  currentTheme = settings.theme === 'light' ? 'light' : 'dark'
+  const tb = THEME_TITLEBAR[currentTheme] ?? THEME_TITLEBAR.dark
 
   const mainWindow = new BrowserWindow({
     width: 1400,
@@ -40,13 +59,16 @@ async function createWindow(): Promise<void> {
 
   // Update titlebar when theme changes at runtime
   ipcMain.handle(IPC.THEME_CHANGE, (_event, theme: 'dark' | 'light') => {
-    const colors = THEME_TITLEBAR[theme] ?? THEME_TITLEBAR.dark
-    mainWindow.setBackgroundColor(colors.color)
-    mainWindow.setTitleBarOverlay({
-      color: colors.color,
-      symbolColor: colors.symbolColor,
-      height: 36
-    })
+    currentTheme = theme
+    mainWindow.setBackgroundColor((THEME_TITLEBAR[theme] ?? THEME_TITLEBAR.dark).color)
+    refreshTitleBar(mainWindow)
+  })
+
+  // Dim/restore the caption-button overlay while modals are open (ref-counted so
+  // stacked modals don't restore early).
+  ipcMain.handle(IPC.TITLEBAR_DIM, (_event, dimmed: boolean) => {
+    dimDepth = Math.max(0, dimDepth + (dimmed ? 1 : -1))
+    refreshTitleBar(mainWindow)
   })
 
   mainWindow.on('ready-to-show', () => {

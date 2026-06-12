@@ -1,10 +1,18 @@
 import { ipcMain, app, BrowserWindow } from 'electron'
+import { is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import { IPC } from '@shared/ipc-channels'
 
 export function registerUpdateIpc(): void {
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = true
+
+  // In dev the app isn't packaged, so electron-updater normally skips the check
+  // entirely. Forcing the dev config makes it read dev-app-update.yml (GitHub
+  // provider) so the full Check-for-Updates flow can be exercised via `npm run dev`.
+  if (is.dev) {
+    autoUpdater.forceDevUpdateConfig = true
+  }
 
   function sendStatus(data: Record<string, unknown>): void {
     for (const win of BrowserWindow.getAllWindows()) {

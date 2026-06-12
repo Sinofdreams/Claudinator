@@ -20,6 +20,7 @@ import type { Card, ColumnId } from '@shared/models'
 import ColumnComponent from './ColumnComponent'
 import { CardContent } from './CardComponent'
 import CardDialog from './CardDialog'
+import { useTitleBarDim } from '@/hooks/useTitleBarDim'
 
 function TrashDropZone(): JSX.Element {
   const { isOver, setNodeRef } = useDroppable({ id: 'trash' })
@@ -77,6 +78,8 @@ export default function Board(): JSX.Element {
   const [searchQuery, setSearchQuery] = useState('')
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const pendingOverColumnRef = useRef<ColumnId | null>(null)
+
+  useTitleBarDim(Boolean(pendingDeleteId))
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })

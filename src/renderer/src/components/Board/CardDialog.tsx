@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { Card } from '@shared/models'
 import { useSettingsStore } from '@/stores/settings-store'
+import { useTitleBarDim } from '@/hooks/useTitleBarDim'
 
 interface CardDialogProps {
   card?: Card | null
@@ -35,6 +36,8 @@ export default function CardDialog({ card, onSave, onClose, onDelete }: CardDial
   const [projectDir, setProjectDir] = useState(card?.projectDir ?? defaultProjectDir)
   const [tagInput, setTagInput] = useState('')
   const [tags, setTags] = useState<string[]>(card?.tags ?? [])
+
+  useTitleBarDim()
 
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
