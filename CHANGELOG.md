@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 - Resizable divider between the markdown editor and live preview in Notes & Docs (drag to set the split, clamped 20–80%).
+- Pop-out the Notes & Docs preview into a separate, movable window (toolbar button) that live-syncs the rendered markdown and theme — handy for keeping a note's preview visible while a card session is open or on a second monitor.
 
 ### Fixed
 - Dim the title-bar caption buttons while a full-screen modal is open, so the OS-drawn button strip no longer stays bright over the dimmed backdrop (session modal, settings, card dialog, delete confirmation).

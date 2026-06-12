@@ -45,7 +45,9 @@ export default function NotesPanel(): JSX.Element {
   const splitRef = useRef<HTMLDivElement>(null)
 
   const settingsNotesDir = useSettingsStore((s) => s.notesDir)
+  const theme = useSettingsStore((s) => s.theme)
   const [notesFolder, setNotesFolder] = useState('')
+  const [previewPopped, setPreviewPopped] = useState(false)
 
   const activeSessionId = activeName ? sessionByNote[activeName] ?? null : null
 
@@ -243,6 +245,30 @@ export default function NotesPanel(): JSX.Element {
 
   const previewHtml = useMemo(() => renderMarkdown(content), [content])
 
+  // Stream content/theme/title to the detached preview window while it's open.
+  useEffect(() => {
+    if (previewPopped) {
+      window.api.updatePreview({ html: previewHtml, theme, title: activeName ?? '' })
+    }
+  }, [previewPopped, previewHtml, theme, activeName])
+
+  // Reset the toggle if the user closes the preview window directly.
+  useEffect(() => {
+    const unsub = window.api.onPreviewClosed(() => setPreviewPopped(false))
+    return unsub
+  }, [])
+
+  const togglePreviewPopout = async (): Promise<void> => {
+    if (previewPopped) {
+      await window.api.closePreview()
+      setPreviewPopped(false)
+    } else {
+      await window.api.openPreview()
+      setPreviewPopped(true)
+      window.api.updatePreview({ html: previewHtml, theme, title: activeName ?? '' })
+    }
+  }
+
   const filtered = notes.filter((n) => n.name.toLowerCase().includes(search.toLowerCase()))
 
   return (
@@ -398,6 +424,25 @@ export default function NotesPanel(): JSX.Element {
               <span style={{ fontSize: 11, color: 'var(--text-muted)', width: 52, textAlign: 'right' }}>
                 {saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : ''}
               </span>
+
+              <button
+                onClick={togglePreviewPopout}
+                title={previewPopped ? 'Close detached preview window' : 'Open preview in a separate window'}
+                className="flex items-center justify-center cursor-pointer transition-colors"
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 7,
+                  background: 'none',
+                  border: `1px solid ${previewPopped ? 'var(--accent)' : 'var(--border-primary)'}`,
+                  color: previewPopped ? 'var(--accent)' : 'var(--text-muted)'
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M6.5 3H3.5A1.5 1.5 0 002 4.5v8A1.5 1.5 0 003.5 14h8a1.5 1.5 0 001.5-1.5v-3" />
+                  <path d="M9.5 2.5H13.5V6.5M13 3l-5.5 5.5" />
+                </svg>
+              </button>
 
               <button
                 onClick={handleDelete}

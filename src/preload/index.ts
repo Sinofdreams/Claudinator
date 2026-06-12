@@ -128,6 +128,30 @@ const api = {
     return () => ipcRenderer.removeListener(IPC.UPDATE_STATUS, handler)
   },
 
+  // Detached markdown preview window
+  openPreview: (): Promise<void> => ipcRenderer.invoke(IPC.PREVIEW_OPEN),
+  closePreview: (): Promise<void> => ipcRenderer.invoke(IPC.PREVIEW_CLOSE),
+  updatePreview: (data: { html: string; theme: 'dark' | 'light'; title: string }): void =>
+    ipcRenderer.send(IPC.PREVIEW_UPDATE, data),
+  previewReady: (): void => ipcRenderer.send(IPC.PREVIEW_READY),
+  onPreviewData: (
+    callback: (data: { html: string; theme: 'dark' | 'light'; title: string }) => void
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      data: { html: string; theme: 'dark' | 'light'; title: string }
+    ): void => {
+      callback(data)
+    }
+    ipcRenderer.on(IPC.PREVIEW_DATA, handler)
+    return () => ipcRenderer.removeListener(IPC.PREVIEW_DATA, handler)
+  },
+  onPreviewClosed: (callback: () => void): (() => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on(IPC.PREVIEW_CLOSED, handler)
+    return () => ipcRenderer.removeListener(IPC.PREVIEW_CLOSED, handler)
+  },
+
   // Session event listeners
   onSessionData: (callback: (sessionId: string, data: string) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, sessionId: string, data: string): void => {

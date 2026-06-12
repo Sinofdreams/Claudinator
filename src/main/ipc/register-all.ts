@@ -6,6 +6,7 @@ import { registerStatsIpc } from './stats-ipc'
 import { registerSettingsIpc } from './settings-ipc'
 import { registerUpdateIpc } from './update-ipc'
 import { registerNotesIpc } from './notes-ipc'
+import { registerPreviewIpc } from './preview-ipc'
 
 export function registerAllIpc(): void {
   registerBoardIpc()
@@ -16,4 +17,5 @@ export function registerAllIpc(): void {
   registerSettingsIpc()
   registerUpdateIpc()
   registerNotesIpc()
+  registerPreviewIpc()
 }
