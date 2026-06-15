@@ -4,6 +4,12 @@ All notable changes to Claude Code Orchestrator will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.4] - 2026-06-12
+
+### Added
+- Application icon: embedded in the Windows exe/installer (no longer the default Electron icon), shown on the dev window/taskbar, and used as the sidebar logo.
+- `author` field in package.json (publisher metadata).
+
 ## [0.1.3] - 2026-06-12
 
 ### Added
