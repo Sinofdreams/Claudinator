@@ -5,6 +5,7 @@ import { useSettingsStore } from './stores/settings-store'
 import Board from './components/Board/Board'
 import SessionsPanel from './components/Sessions/SessionsPanel'
 import NotesPanel from './components/Notes/NotesPanel'
+import DashboardPanel from './components/Dashboard/DashboardPanel'
 import Sidebar from './components/Layout/Sidebar'
 import SessionModal from './components/Terminal/SessionModal'
 import CardDialog from './components/Board/CardDialog'
@@ -47,6 +48,7 @@ export default function App(): JSX.Element {
         {currentView === 'board' && <Board />}
         {currentView === 'sessions' && <SessionsPanel />}
         {currentView === 'notes' && <NotesPanel />}
+        {currentView === 'dashboard' && <DashboardPanel />}
       </div>
 
       {/* Session modal overlay */}
