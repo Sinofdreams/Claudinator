@@ -18,7 +18,11 @@ function relativeTime(timestamp: number): string {
   return `${days}d ago`
 }
 
-function StatusIcon({ status }: { status: 'idle' | 'running' | 'waiting' | 'done' }): JSX.Element {
+function StatusIcon({
+  status
+}: {
+  status: 'idle' | 'running' | 'waiting' | 'decision' | 'done'
+}): JSX.Element {
   if (status === 'running') {
     return (
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="animate-spin">
@@ -33,11 +37,22 @@ function StatusIcon({ status }: { status: 'idle' | 'running' | 'waiting' | 'done
     )
   }
 
+  // Finished — waiting for your next prompt (green).
   if (status === 'waiting') {
     return (
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-        <circle cx="10" cy="10" r="9" fill="#1e3a5f" />
-        <circle cx="10" cy="10" r="3" fill="#60a5fa" />
+        <circle cx="10" cy="10" r="9" fill="#14532d" />
+        <circle cx="10" cy="10" r="3.2" fill="#22c55e" />
+      </svg>
+    )
+  }
+
+  // Waiting for a decision (orange, gently pulsing for attention).
+  if (status === 'decision') {
+    return (
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="animate-pulse">
+        <circle cx="10" cy="10" r="9" fill="#3f2912" />
+        <circle cx="10" cy="10" r="3.2" fill="#f59e0b" />
       </svg>
     )
   }
@@ -66,10 +81,13 @@ function StatusIcon({ status }: { status: 'idle' | 'running' | 'waiting' | 'done
   )
 }
 
-function getCardStatus(sessionStatus: SessionStatus | null): 'idle' | 'running' | 'waiting' | 'done' {
+function getCardStatus(
+  sessionStatus: SessionStatus | null
+): 'idle' | 'running' | 'waiting' | 'decision' | 'done' {
   if (!sessionStatus) return 'idle'
   if (sessionStatus === 'running' || sessionStatus === 'starting') return 'running'
   if (sessionStatus === 'waiting') return 'waiting'
+  if (sessionStatus === 'decision') return 'decision'
   if (sessionStatus === 'stopped') return 'done'
   return 'idle' // error
 }

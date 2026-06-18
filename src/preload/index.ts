@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '@shared/ipc-channels'
-import { BoardState, SessionInfo, ThemeOverrides, CustomTheme, NoteMeta } from '@shared/models'
+import { BoardState, SessionInfo, ThemeOverrides, CustomTheme, NotesTree } from '@shared/models'
 import type { StatsSummary } from '@shared/stats'
 
 const api = {
@@ -99,7 +99,7 @@ const api = {
     ipcRenderer.invoke(IPC.CLAUDE_MD_READ, projectDir),
 
   // Notes (markdown library)
-  listNotes: (): Promise<NoteMeta[]> => ipcRenderer.invoke(IPC.NOTES_LIST),
+  listNotes: (): Promise<NotesTree> => ipcRenderer.invoke(IPC.NOTES_LIST),
   readNote: (name: string): Promise<string> => ipcRenderer.invoke(IPC.NOTES_READ, name),
   saveNote: (name: string, content: string): Promise<void> =>
     ipcRenderer.invoke(IPC.NOTES_SAVE, name, content),
@@ -107,6 +107,16 @@ const api = {
   deleteNote: (name: string): Promise<void> => ipcRenderer.invoke(IPC.NOTES_DELETE, name),
   renameNote: (oldName: string, newName: string): Promise<string> =>
     ipcRenderer.invoke(IPC.NOTES_RENAME, oldName, newName),
+  moveNote: (notePath: string, targetFolder: string): Promise<string> =>
+    ipcRenderer.invoke(IPC.NOTES_MOVE, notePath, targetFolder),
+  createFolder: (path: string): Promise<string> =>
+    ipcRenderer.invoke(IPC.NOTES_CREATE_FOLDER, path),
+  renameFolder: (oldPath: string, newName: string): Promise<string> =>
+    ipcRenderer.invoke(IPC.NOTES_RENAME_FOLDER, oldPath, newName),
+  deleteFolder: (path: string): Promise<void> =>
+    ipcRenderer.invoke(IPC.NOTES_DELETE_FOLDER, path),
+  moveFolder: (folderPath: string, targetFolder: string): Promise<string> =>
+    ipcRenderer.invoke(IPC.NOTES_MOVE_FOLDER, folderPath, targetFolder),
   getNotesDir: (): Promise<string> => ipcRenderer.invoke(IPC.NOTES_DIR),
   getNoteSession: (name: string): Promise<string | null> =>
     ipcRenderer.invoke(IPC.NOTES_GET_SESSION, name),

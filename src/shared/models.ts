@@ -28,13 +28,25 @@ export interface BoardState {
 }
 
 export interface NoteMeta {
-  name: string // filename without .md extension
+  path: string // relative id, '/'-separated, without .md (e.g. "AFE/Spec")
+  name: string // leaf display name (last path segment)
   createdAt: number
   updatedAt: number
   size: number
 }
 
-export type SessionStatus = 'starting' | 'running' | 'waiting' | 'stopped' | 'error'
+export interface NotesTree {
+  notes: NoteMeta[]
+  folders: string[] // relative folder paths, '/'-separated (includes empty folders)
+}
+
+export type SessionStatus =
+  | 'starting'
+  | 'running'
+  | 'waiting' // finished — waiting for your prompt
+  | 'decision' // waiting for you to answer a yes/no / permission / plan prompt
+  | 'stopped'
+  | 'error'
 
 export interface SessionInfo {
   id: string

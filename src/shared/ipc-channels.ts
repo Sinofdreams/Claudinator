@@ -45,6 +45,11 @@ export const IPC = {
   NOTES_DIR: 'notes:dir',
   NOTES_GET_SESSION: 'notes:get-session',
   NOTES_SET_SESSION: 'notes:set-session',
+  NOTES_CREATE_FOLDER: 'notes:create-folder',
+  NOTES_RENAME_FOLDER: 'notes:rename-folder',
+  NOTES_DELETE_FOLDER: 'notes:delete-folder',
+  NOTES_MOVE: 'notes:move',
+  NOTES_MOVE_FOLDER: 'notes:move-folder',
 
   // Theme
   THEME_CHANGE: 'theme:change',

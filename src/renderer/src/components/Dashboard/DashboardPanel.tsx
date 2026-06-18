@@ -58,24 +58,25 @@ function ChartTooltip({
   if (!active || !payload?.length) return null
   return (
     <div
-      className="rounded-md px-2.5 py-1.5 text-xs shadow-lg"
+      className="rounded-lg text-xs shadow-lg"
       style={{
+        padding: '10px 13px',
         backgroundColor: 'var(--bg-elevated)',
         border: '1px solid var(--border-primary)',
         color: 'var(--text-primary)'
       }}
     >
       {label != null && (
-        <div className="mb-0.5 font-medium" style={{ color: 'var(--text-secondary)' }}>
+        <div className="font-medium" style={{ color: 'var(--text-secondary)', marginBottom: 6 }}>
           {label}
         </div>
       )}
       {payload.map((p, i) => (
-        <div key={i} className="flex items-center gap-1.5">
+        <div key={i} className="flex items-center" style={{ gap: 7, marginTop: i > 0 ? 4 : 0 }}>
           {p.color && (
             <span
-              className="inline-block h-2 w-2 rounded-sm"
-              style={{ backgroundColor: p.color }}
+              className="inline-block rounded-sm"
+              style={{ width: 9, height: 9, backgroundColor: p.color, flexShrink: 0 }}
             />
           )}
           <span>

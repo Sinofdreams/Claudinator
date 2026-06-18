@@ -133,22 +133,68 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
   initListeners: () => {
     const idleTimers = new Map<string, ReturnType<typeof setTimeout>>()
+    // Rolling tail of recent terminal output per session, used to tell apart
+    // "finished, waiting for a prompt" from "waiting for a decision".
+    const buffers = new Map<string, string>()
 
-    const unsubData = window.api.onSessionData((sessionId, _data) => {
-      // Mark as running when data flows in
+    // Claude Code draws interactive prompts with Ink, which wraps text in lots
+    // of ANSI escape codes — so we strip those before matching, otherwise the
+    // footer words get split up and literal substrings never match.
+    const stripAnsi = (s: string): string =>
+      s
+        // CSI sequences: ESC [ … final byte (SGR colours, cursor moves, etc.)
+        .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '')
+        // OSC sequences: ESC ] … (BEL | ST)
+        .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')
+        // any other lone ESC-prefixed escape
+        .replace(/\x1b[@-Z\\-_]/g, '')
+
+    // The most reliable, glyph-independent signal is the navigation footer every
+    // arrow-select prompt prints, e.g. "Enter to select · ↑/↓ to navigate · Esc
+    // to cancel". Match "Esc to cancel" (a prompt) but NOT "esc to interrupt"
+    // (shown while Claude is actively generating).
+    const isDecisionPrompt = (raw: string): boolean => {
+      const t = stripAnsi(raw)
+      return /to navigate|Enter to select|Esc to cancel|[❯›▶]\s*\d+\.|Do you want to (?:proceed|continue)/i.test(
+        t
+      )
+    }
+
+    const unsubData = window.api.onSessionData((sessionId, data) => {
       const session = get().sessions[sessionId]
-      if (session && session.status !== 'running' && session.status !== 'stopped') {
+      if (!session || session.status === 'stopped') return
+
+      // Keep a bounded rolling buffer of recent output.
+      let buf = (buffers.get(sessionId) ?? '') + data
+      if (buf.length > 8000) buf = buf.slice(-8000)
+      buffers.set(sessionId, buf)
+
+      // A decision prompt currently on screen → flag immediately (bounded tail so
+      // a resolved prompt clears as soon as enough new output scrolls in).
+      if (isDecisionPrompt(buf.slice(-1200))) {
+        const existing = idleTimers.get(sessionId)
+        if (existing) {
+          clearTimeout(existing)
+          idleTimers.delete(sessionId)
+        }
+        if (session.status !== 'decision') get().updateSessionStatus(sessionId, 'decision')
+        return
+      }
+
+      // Otherwise output is flowing → running.
+      if (session.status !== 'running') {
         get().updateSessionStatus(sessionId, 'running')
       }
 
-      // Reset idle timer — if no data for 3s, mark as waiting
+      // Reset idle timer — after 3s of quiet, decide between decision and waiting.
       const existing = idleTimers.get(sessionId)
       if (existing) clearTimeout(existing)
       idleTimers.set(sessionId, setTimeout(() => {
         const s = get().sessions[sessionId]
-        if (s && s.status === 'running') {
-          get().updateSessionStatus(sessionId, 'waiting')
-        }
+        if (!s || s.status === 'stopped') return
+        const tail = (buffers.get(sessionId) ?? '').slice(-3000)
+        const next = isDecisionPrompt(tail) ? 'decision' : 'waiting'
+        if (s.status !== next) get().updateSessionStatus(sessionId, next)
       }, 3000))
     })
 
@@ -156,6 +202,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       const timer = idleTimers.get(sessionId)
       if (timer) clearTimeout(timer)
       idleTimers.delete(sessionId)
+      buffers.delete(sessionId)
       get().updateSessionStatus(sessionId, 'stopped')
     })
 

@@ -7,9 +7,10 @@ import CardDialog from '@/components/Board/CardDialog'
 import type { SessionStatus, Card } from '@shared/models'
 
 const STATUS_CONFIG: Record<SessionStatus, { label: string; color: string; bg: string }> = {
-  starting: { label: 'Starting', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)' },
-  running: { label: 'Running', color: '#22c55e', bg: 'rgba(34, 197, 94, 0.1)' },
-  waiting: { label: 'Waiting', color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.1)' },
+  starting: { label: 'Starting', color: '#a78bfa', bg: 'rgba(167, 139, 250, 0.1)' },
+  running: { label: 'Running', color: '#60a5fa', bg: 'rgba(96, 165, 250, 0.1)' },
+  waiting: { label: 'Waiting', color: '#22c55e', bg: 'rgba(34, 197, 94, 0.1)' },
+  decision: { label: 'Decision', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)' },
   stopped: { label: 'Stopped', color: 'var(--text-muted)', bg: 'var(--bg-surface)' },
   error: { label: 'Error', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.1)' }
 }

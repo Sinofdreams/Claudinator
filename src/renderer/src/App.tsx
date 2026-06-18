@@ -9,6 +9,8 @@ import DashboardPanel from './components/Dashboard/DashboardPanel'
 import Sidebar from './components/Layout/Sidebar'
 import SessionModal from './components/Terminal/SessionModal'
 import CardDialog from './components/Board/CardDialog'
+import WhatsNewModal from './components/WhatsNew/WhatsNewModal'
+import { useUIStore } from './stores/ui-store'
 
 export default function App(): JSX.Element {
   const loaded = useBoardStore((s) => s.loaded)
@@ -20,10 +22,24 @@ export default function App(): JSX.Element {
   const closeNewCardDialog = useBoardStore((s) => s.closeNewCardDialog)
   const addCard = useBoardStore((s) => s.addCard)
   const updateCard = useBoardStore((s) => s.updateCard)
+  const whatsNewOpen = useUIStore((s) => s.whatsNewOpen)
   useEffect(() => {
     load()
     useSettingsStore.getState().load()
   }, [load])
+
+  // Show "What's New" once after the app version changes (i.e. after an update).
+  useEffect(() => {
+    window.api
+      .getAppVersion()
+      .then((v) => {
+        if (!v) return
+        const seen = localStorage.getItem('wn-seen-version')
+        if (seen && seen !== v) useUIStore.getState().openWhatsNew()
+        localStorage.setItem('wn-seen-version', v)
+      })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     const cleanup = initListeners()
@@ -53,6 +69,9 @@ export default function App(): JSX.Element {
 
       {/* Session modal overlay */}
       {viewingSessionId && <SessionModal sessionId={viewingSessionId} />}
+
+      {/* What's New popup (shown after an update, or from About) */}
+      {whatsNewOpen && <WhatsNewModal />}
 
       {/* Global new card dialog — works from any view */}
       {currentView !== 'board' && newCardDialogOpen && (

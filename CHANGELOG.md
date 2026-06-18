@@ -4,6 +4,16 @@ All notable changes to Claude Code Orchestrator will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.6] - 2026-06-18
+
+### Added
+- Nested folders in Notes & Docs: organize markdown into a collapsible folder tree, move notes/folders by drag-and-drop or a right-click "Move to…" menu, and create folders/subfolders. Folders are real subdirectories on disk.
+- "What's New" popup that appears once after an update, showing recent versions with dates and highlights (curated in `src/shared/release-notes.ts`).
+
+### Changed
+- Board cards now distinguish two attention states: a green dot when Claude has finished and is waiting for your prompt, and a pulsing orange dot when it's waiting for a decision (permission, plan approval, or a select-menu choice). Detection scans the session's terminal output (ANSI-stripped) for Claude's interactive prompt.
+- Usage Dashboard polish: roomier stat cards and section padding, larger icon-only Refresh button, and a cleaner chart tooltip.
+
 ## [0.1.5] - 2026-06-18
 
 ### Added

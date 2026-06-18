@@ -27,11 +27,81 @@ function formatRelative(ts: number): string {
   return new Date(ts).toLocaleDateString()
 }
 
+function parentOf(path: string): string {
+  const i = path.lastIndexOf('/')
+  return i === -1 ? '' : path.slice(0, i)
+}
+function leafOf(path: string): string {
+  const i = path.lastIndexOf('/')
+  return i === -1 ? path : path.slice(i + 1)
+}
+
 type SaveState = 'idle' | 'saving' | 'saved'
+
+interface FolderNode {
+  path: string
+  name: string
+  folders: FolderNode[]
+  notes: NoteMeta[]
+}
+
+function buildTree(
+  folders: string[],
+  notes: NoteMeta[]
+): { rootFolders: FolderNode[]; rootNotes: NoteMeta[]; nodeCount: Map<string, number> } {
+  const nodeByPath = new Map<string, FolderNode>()
+  const ensure = (path: string): FolderNode => {
+    let n = nodeByPath.get(path)
+    if (!n) {
+      n = { path, name: leafOf(path), folders: [], notes: [] }
+      nodeByPath.set(path, n)
+    }
+    return n
+  }
+  const rootFolders: FolderNode[] = []
+  for (const f of folders) {
+    const node = ensure(f)
+    const parent = parentOf(f)
+    if (parent === '') rootFolders.push(node)
+    else ensure(parent).folders.push(node)
+  }
+  const rootNotes: NoteMeta[] = []
+  for (const note of notes) {
+    const parent = parentOf(note.path)
+    if (parent === '') rootNotes.push(note)
+    else {
+      const node = nodeByPath.get(parent)
+      if (node) node.notes.push(note)
+      else rootNotes.push(note)
+    }
+  }
+  // Total descendant note counts per folder
+  const nodeCount = new Map<string, number>()
+  const count = (n: FolderNode): number => {
+    let c = n.notes.length
+    for (const sub of n.folders) c += count(sub)
+    nodeCount.set(n.path, c)
+    return c
+  }
+  rootFolders.forEach(count)
+  return { rootFolders, rootNotes, nodeCount }
+}
+
+interface DragItem {
+  kind: 'note' | 'folder'
+  path: string
+}
+interface ContextMenu {
+  x: number
+  y: number
+  kind: 'note' | 'folder' | 'root'
+  path: string
+}
 
 export default function NotesPanel(): JSX.Element {
   const [notes, setNotes] = useState<NoteMeta[]>([])
-  const [activeName, setActiveName] = useState<string | null>(null)
+  const [folders, setFolders] = useState<string[]>([])
+  const [activePath, setActivePath] = useState<string | null>(null)
   const [content, setContent] = useState('')
   const [search, setSearch] = useState('')
   const [saveState, setSaveState] = useState<SaveState>('idle')
@@ -42,6 +112,14 @@ export default function NotesPanel(): JSX.Element {
   const [editorPct, setEditorPct] = useState(50)
   const [sessionByNote, setSessionByNote] = useState<Record<string, string>>({})
 
+  // Folder-tree state
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const [renamingFolder, setRenamingFolder] = useState<string | null>(null)
+  const [folderRenameValue, setFolderRenameValue] = useState('')
+  const [menu, setMenu] = useState<ContextMenu | null>(null)
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
+  const dragRef = useRef<DragItem | null>(null)
+
   const splitRef = useRef<HTMLDivElement>(null)
 
   const settingsNotesDir = useSettingsStore((s) => s.notesDir)
@@ -49,45 +127,51 @@ export default function NotesPanel(): JSX.Element {
   const [notesFolder, setNotesFolder] = useState('')
   const [previewPopped, setPreviewPopped] = useState(false)
 
-  const activeSessionId = activeName ? sessionByNote[activeName] ?? null : null
+  const activeSessionId = activePath ? sessionByNote[activePath] ?? null : null
+  const activeLeaf = activePath ? leafOf(activePath) : ''
+  const activeFolder = activePath ? parentOf(activePath) : ''
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const activeNameRef = useRef<string | null>(null)
-  activeNameRef.current = activeName
+  const activePathRef = useRef<string | null>(null)
+  activePathRef.current = activePath
   const contentRef = useRef('')
   contentRef.current = content
 
   const refreshList = useCallback(async (): Promise<NoteMeta[]> => {
-    const list = await window.api.listNotes()
-    setNotes(list)
-    return list
+    const tree = await window.api.listNotes()
+    setNotes(tree.notes)
+    setFolders(tree.folders)
+    return tree.notes
   }, [])
 
   // Ensure the active note has a live inline CLI session: adopt an existing one,
   // otherwise start (resuming the note's linked Claude session if it has one).
-  const ensureSession = useCallback(async (name: string): Promise<void> => {
+  const ensureSession = useCallback(async (path: string): Promise<void> => {
     const store = useSessionStore.getState()
     const running = Object.values(store.sessions).find(
-      (s) => s.cardId === `notes:${name}` && s.status !== 'stopped'
+      (s) => s.cardId === `notes:${path}` && s.status !== 'stopped'
     )
     if (running) {
-      setSessionByNote((m) => ({ ...m, [name]: running.id }))
+      setSessionByNote((m) => ({ ...m, [path]: running.id }))
       return
     }
     const dir = await window.api.getNotesDir()
-    const resumeId = await window.api.getNoteSession(name)
-    const info = await store.startSessionInline(`notes:${name}`, name, dir, resumeId)
-    setSessionByNote((m) => ({ ...m, [name]: info.id }))
+    const resumeId = await window.api.getNoteSession(path)
+    const info = await store.startSessionInline(`notes:${path}`, leafOf(path), dir, resumeId)
+    setSessionByNote((m) => ({ ...m, [path]: info.id }))
   }, [])
 
-  const loadNote = useCallback(async (name: string): Promise<void> => {
-    const text = await window.api.readNote(name)
-    setActiveName(name)
-    setContent(text)
-    setSaveState('idle')
-    setRenaming(false)
-    await ensureSession(name)
-  }, [ensureSession])
+  const loadNote = useCallback(
+    async (path: string): Promise<void> => {
+      const text = await window.api.readNote(path)
+      setActivePath(path)
+      setContent(text)
+      setSaveState('idle')
+      setRenaming(false)
+      await ensureSession(path)
+    },
+    [ensureSession]
+  )
 
   // Resolve the actual notes folder path (configured or default) for display
   useEffect(() => {
@@ -99,9 +183,9 @@ export default function NotesPanel(): JSX.Element {
     ;(async () => {
       const list = await refreshList()
       if (list.length > 0) {
-        await loadNote(list[0].name)
+        await loadNote(list[0].path)
       } else {
-        setActiveName(null)
+        setActivePath(null)
         setContent('')
       }
     })()
@@ -113,9 +197,9 @@ export default function NotesPanel(): JSX.Element {
       clearTimeout(saveTimer.current)
       saveTimer.current = null
     }
-    const name = activeNameRef.current
-    if (name) {
-      await window.api.saveNote(name, contentRef.current)
+    const path = activePathRef.current
+    if (path) {
+      await window.api.saveNote(path, contentRef.current)
     }
   }, [])
 
@@ -129,10 +213,9 @@ export default function NotesPanel(): JSX.Element {
   // Reload the active note when the window regains focus (e.g. after Claude edits it)
   useEffect(() => {
     const onFocus = async (): Promise<void> => {
-      const name = activeNameRef.current
-      if (!name) return
-      const text = await window.api.readNote(name)
-      // Only overwrite if no unsaved edits pending and content actually changed
+      const path = activePathRef.current
+      if (!path) return
+      const text = await window.api.readNote(path)
       if (!saveTimer.current && text !== contentRef.current) {
         setContent(text)
       }
@@ -142,65 +225,180 @@ export default function NotesPanel(): JSX.Element {
     return () => window.removeEventListener('focus', onFocus)
   }, [refreshList])
 
+  // Close the context menu on any outside click
+  useEffect(() => {
+    if (!menu) return
+    const close = (): void => setMenu(null)
+    window.addEventListener('click', close)
+    window.addEventListener('contextmenu', close)
+    return () => {
+      window.removeEventListener('click', close)
+      window.removeEventListener('contextmenu', close)
+    }
+  }, [menu])
+
   const handleContentChange = (value: string): void => {
     setContent(value)
     setSaveState('saving')
-    const name = activeNameRef.current
+    const path = activePathRef.current
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(async () => {
       saveTimer.current = null
-      if (name) {
-        await window.api.saveNote(name, value)
+      if (path) {
+        await window.api.saveNote(path, value)
         setSaveState('saved')
-        // Bump the list ordering/timestamps
         refreshList()
         setTimeout(() => setSaveState('idle'), 1500)
       }
     }, 600)
   }
 
-  const handleSelect = async (name: string): Promise<void> => {
-    if (name === activeName) return
+  const handleSelect = async (path: string): Promise<void> => {
+    if (path === activePath) return
     await flushSave()
-    await loadNote(name)
+    await loadNote(path)
   }
 
-  const handleNew = async (): Promise<void> => {
+  const handleNewNote = async (folder = activeFolder): Promise<void> => {
     await flushSave()
-    const created = await window.api.createNote('Untitled')
+    const base = folder ? `${folder}/Untitled` : 'Untitled'
+    const created = await window.api.createNote(base)
     await refreshList()
     await loadNote(created)
+    setRenameValue(leafOf(created))
     setRenaming(true)
-    setRenameValue(created)
+  }
+
+  const handleNewFolder = async (parent = ''): Promise<void> => {
+    const base = parent ? `${parent}/New Folder` : 'New Folder'
+    const created = await window.api.createFolder(base)
+    await refreshList()
+    if (parent) setCollapsed((c) => deleteFrom(c, parent))
+    // Begin inline rename of the new folder
+    setRenamingFolder(created)
+    setFolderRenameValue(leafOf(created))
   }
 
   const handleDelete = async (): Promise<void> => {
-    if (!activeName) return
-    const ok = window.confirm(`Delete note "${activeName}"? This cannot be undone.`)
+    if (!activePath) return
+    const ok = window.confirm(`Delete note "${activeLeaf}"? This cannot be undone.`)
     if (!ok) return
     if (saveTimer.current) {
       clearTimeout(saveTimer.current)
       saveTimer.current = null
     }
-    await window.api.deleteNote(activeName)
+    await window.api.deleteNote(activePath)
     const list = await refreshList()
-    if (list.length > 0) {
-      await loadNote(list[0].name)
-    } else {
-      setActiveName(null)
+    if (list.length > 0) await loadNote(list[0].path)
+    else {
+      setActivePath(null)
       setContent('')
     }
   }
 
+  const deleteNoteByPath = async (path: string): Promise<void> => {
+    const ok = window.confirm(`Delete note "${leafOf(path)}"? This cannot be undone.`)
+    if (!ok) return
+    await window.api.deleteNote(path)
+    const list = await refreshList()
+    if (path === activePath) {
+      if (list.length > 0) await loadNote(list[0].path)
+      else {
+        setActivePath(null)
+        setContent('')
+      }
+    }
+  }
+
+  const deleteFolderByPath = async (path: string): Promise<void> => {
+    const ok = window.confirm(
+      `Delete folder "${leafOf(path)}" and everything inside it? This cannot be undone.`
+    )
+    if (!ok) return
+    await window.api.deleteFolder(path)
+    const list = await refreshList()
+    // If the active note lived inside the deleted folder, pick another
+    if (activePath && (activePath === path || activePath.startsWith(path + '/'))) {
+      if (list.length > 0) await loadNote(list[0].path)
+      else {
+        setActivePath(null)
+        setContent('')
+      }
+    }
+  }
+
   const commitRename = async (): Promise<void> => {
-    if (!activeName) return
+    if (!activePath) return
     const next = renameValue.trim()
     setRenaming(false)
-    if (!next || next === activeName) return
+    if (!next || next === activeLeaf) return
     await flushSave()
-    const finalName = await window.api.renameNote(activeName, next)
+    const finalPath = await window.api.renameNote(activePath, next)
+    remapSession(activePath, finalPath)
     await refreshList()
-    setActiveName(finalName)
+    setActivePath(finalPath)
+  }
+
+  const commitFolderRename = async (): Promise<void> => {
+    const target = renamingFolder
+    setRenamingFolder(null)
+    if (!target) return
+    const next = folderRenameValue.trim()
+    if (!next || next === leafOf(target)) return
+    const finalPath = await window.api.renameFolder(target, next)
+    // Carry the active note path if it was inside the renamed folder
+    if (activePath && (activePath === target || activePath.startsWith(target + '/'))) {
+      const newActive = finalPath + activePath.slice(target.length)
+      remapSession(activePath, newActive)
+      setActivePath(newActive)
+    }
+    await refreshList()
+  }
+
+  // Keep the in-memory note→session map keyed correctly after a path change.
+  const remapSession = (oldPath: string, newPath: string): void => {
+    if (oldPath === newPath) return
+    setSessionByNote((m) => {
+      const next: Record<string, string> = {}
+      for (const [k, v] of Object.entries(m)) {
+        if (k === oldPath) next[newPath] = v
+        else if (k.startsWith(oldPath + '/')) next[newPath + k.slice(oldPath.length)] = v
+        else next[k] = v
+      }
+      return next
+    })
+  }
+
+  const performMove = async (item: DragItem, targetFolder: string): Promise<void> => {
+    if (item.kind === 'note') {
+      if (parentOf(item.path) === targetFolder) return
+      const newPath = await window.api.moveNote(item.path, targetFolder)
+      remapSession(item.path, newPath)
+      if (activePath === item.path) setActivePath(newPath)
+    } else {
+      if (targetFolder === item.path || targetFolder.startsWith(item.path + '/')) return
+      if (parentOf(item.path) === targetFolder) return
+      const newFolder = await window.api.moveFolder(item.path, targetFolder)
+      if (activePath && (activePath === item.path || activePath.startsWith(item.path + '/'))) {
+        const newActive = newFolder + activePath.slice(item.path.length)
+        remapSession(activePath, newActive)
+        setActivePath(newActive)
+      }
+    }
+    await refreshList()
+  }
+
+  const onDropInto = async (e: React.DragEvent, targetFolder: string): Promise<void> => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDropTarget(null)
+    const item = dragRef.current
+    dragRef.current = null
+    if (item) await performMove(item, targetFolder)
+  }
+
+  const toggleCollapse = (path: string): void => {
+    setCollapsed((c) => (c.has(path) ? deleteFrom(c, path) : new Set(c).add(path)))
   }
 
   // Vertical resize for the bottom CLI pane (drag up = taller)
@@ -248,11 +446,10 @@ export default function NotesPanel(): JSX.Element {
   // Stream content/theme/title to the detached preview window while it's open.
   useEffect(() => {
     if (previewPopped) {
-      window.api.updatePreview({ html: previewHtml, theme, title: activeName ?? '' })
+      window.api.updatePreview({ html: previewHtml, theme, title: activeLeaf })
     }
-  }, [previewPopped, previewHtml, theme, activeName])
+  }, [previewPopped, previewHtml, theme, activeLeaf])
 
-  // Reset the toggle if the user closes the preview window directly.
   useEffect(() => {
     const unsub = window.api.onPreviewClosed(() => setPreviewPopped(false))
     return unsub
@@ -265,32 +462,197 @@ export default function NotesPanel(): JSX.Element {
     } else {
       await window.api.openPreview()
       setPreviewPopped(true)
-      window.api.updatePreview({ html: previewHtml, theme, title: activeName ?? '' })
+      window.api.updatePreview({ html: previewHtml, theme, title: activeLeaf })
     }
   }
 
-  const filtered = notes.filter((n) => n.name.toLowerCase().includes(search.toLowerCase()))
+  const tree = useMemo(() => buildTree(folders, notes), [folders, notes])
+  const searching = search.trim().length > 0
+  const searchLower = search.toLowerCase()
+  const searchHits = useMemo(
+    () =>
+      searching
+        ? notes.filter(
+            (n) =>
+              n.name.toLowerCase().includes(searchLower) ||
+              n.path.toLowerCase().includes(searchLower)
+          )
+        : [],
+    [searching, searchLower, notes]
+  )
+
+  const openMenu = (e: React.MouseEvent, kind: ContextMenu['kind'], path: string): void => {
+    e.preventDefault()
+    e.stopPropagation()
+    setMenu({ x: e.clientX, y: e.clientY, kind, path })
+  }
+
+  // ── Tree rendering ───────────────────────────────────────────────────────
+  const renderNote = (note: NoteMeta, depth: number): JSX.Element => (
+    <button
+      key={'n:' + note.path}
+      draggable
+      onDragStart={(e) => {
+        dragRef.current = { kind: 'note', path: note.path }
+        e.dataTransfer.effectAllowed = 'move'
+      }}
+      onClick={() => handleSelect(note.path)}
+      onContextMenu={(e) => openMenu(e, 'note', note.path)}
+      className="flex w-full items-center rounded-md cursor-pointer transition-colors"
+      style={{
+        textAlign: 'left',
+        padding: '6px 8px',
+        paddingLeft: 10 + depth * 14,
+        marginBottom: 1,
+        border: 'none',
+        gap: 7,
+        backgroundColor: note.path === activePath ? 'var(--bg-active)' : 'transparent',
+        color: note.path === activePath ? 'var(--text-primary)' : 'var(--text-secondary)'
+      }}
+    >
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.7 }}>
+        <path d="M4 1.5h5L13 5v9.5a1 1 0 01-1 1H4a1 1 0 01-1-1v-12a1 1 0 011-1z" />
+        <path d="M9 1.5V5h4" />
+      </svg>
+      <span style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        {note.name}
+      </span>
+    </button>
+  )
+
+  const renderFolder = (node: FolderNode, depth: number): JSX.Element => {
+    const isCollapsed = collapsed.has(node.path)
+    const isDrop = dropTarget === node.path
+    const isRenaming = renamingFolder === node.path
+    return (
+      <div key={'f:' + node.path}>
+        <div
+          draggable={!isRenaming}
+          onDragStart={(e) => {
+            e.stopPropagation()
+            dragRef.current = { kind: 'folder', path: node.path }
+            e.dataTransfer.effectAllowed = 'move'
+          }}
+          onDragOver={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            if (dropTarget !== node.path) setDropTarget(node.path)
+          }}
+          onDragLeave={(e) => {
+            e.stopPropagation()
+            setDropTarget((t) => (t === node.path ? null : t))
+          }}
+          onDrop={(e) => onDropInto(e, node.path)}
+          onClick={() => toggleCollapse(node.path)}
+          onContextMenu={(e) => openMenu(e, 'folder', node.path)}
+          className="flex w-full items-center rounded-md cursor-pointer transition-colors"
+          style={{
+            padding: '6px 8px',
+            paddingLeft: 8 + depth * 14,
+            marginBottom: 1,
+            gap: 5,
+            backgroundColor: isDrop ? 'var(--bg-active)' : 'transparent',
+            outline: isDrop ? '1px solid var(--accent)' : 'none',
+            color: 'var(--text-secondary)'
+          }}
+        >
+          <svg
+            width="11"
+            height="11"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ flexShrink: 0, transform: isCollapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.12s' }}
+          >
+            <path d="M4 6l4 4 4-4" />
+          </svg>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.8 }}>
+            <path d="M2 4.5V12a1.5 1.5 0 001.5 1.5h9A1.5 1.5 0 0014 12V6.5A1.5 1.5 0 0012.5 5H8L6.5 3H3.5A1.5 1.5 0 002 4.5z" />
+          </svg>
+          {isRenaming ? (
+            <input
+              autoFocus
+              value={folderRenameValue}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => setFolderRenameValue(e.target.value)}
+              onBlur={commitFolderRename}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitFolderRename()
+                if (e.key === 'Escape') setRenamingFolder(null)
+              }}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                borderRadius: 5,
+                border: '1px solid var(--border-input)',
+                backgroundColor: 'var(--bg-input)',
+                padding: '2px 6px',
+                fontSize: 13,
+                fontWeight: 600,
+                color: 'var(--text-primary)',
+                outline: 'none'
+              }}
+            />
+          ) : (
+            <>
+              <span style={{ fontSize: 13, fontWeight: 600, flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {node.name}
+              </span>
+              <span style={{ fontSize: 11, color: 'var(--text-faint)', flexShrink: 0 }}>
+                {tree.nodeCount.get(node.path) ?? 0}
+              </span>
+            </>
+          )}
+        </div>
+        {!isCollapsed && (
+          <div>
+            {node.folders.map((f) => renderFolder(f, depth + 1))}
+            {node.notes.map((n) => renderNote(n, depth + 1))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Flat list of all folders for the "Move to…" menu
+  const allFolderPaths = useMemo(() => ['', ...folders], [folders])
 
   return (
     <div className="flex h-full w-full" style={{ backgroundColor: 'var(--bg-primary)' }}>
-      {/* Left: note list */}
+      {/* Left: note tree */}
       <div
         className="flex flex-col shrink-0"
-        style={{ width: 260, borderRight: '1px solid var(--border-primary)' }}
+        style={{ width: 270, borderRight: '1px solid var(--border-primary)' }}
       >
         <div style={{ padding: '14px 14px 10px' }}>
           <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
             <h2 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>Notes &amp; Docs</h2>
-            <button
-              onClick={handleNew}
-              title="New note"
-              className="flex items-center justify-center rounded-md cursor-pointer transition-colors"
-              style={{ width: 26, height: 26, backgroundColor: 'var(--accent)', color: '#fff', border: 'none' }}
-            >
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                <path d="M8 4v8M4 8h8" />
-              </svg>
-            </button>
+            <div className="flex items-center" style={{ gap: 6 }}>
+              <button
+                onClick={() => handleNewFolder('')}
+                title="New folder"
+                className="flex items-center justify-center rounded-md cursor-pointer transition-colors"
+                style={{ width: 26, height: 26, backgroundColor: 'var(--bg-button)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 4.5V12a1.5 1.5 0 001.5 1.5h9A1.5 1.5 0 0014 12V6.5A1.5 1.5 0 0012.5 5H8L6.5 3H3.5A1.5 1.5 0 002 4.5z" />
+                  <path d="M8 7.5v3M6.5 9h3" />
+                </svg>
+              </button>
+              <button
+                onClick={() => handleNewNote()}
+                title="New note"
+                className="flex items-center justify-center rounded-md cursor-pointer transition-colors"
+                style={{ width: 26, height: 26, backgroundColor: 'var(--accent)', color: '#fff', border: 'none' }}
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                  <path d="M8 4v8M4 8h8" />
+                </svg>
+              </button>
+            </div>
           </div>
           <input
             value={search}
@@ -309,39 +671,68 @@ export default function NotesPanel(): JSX.Element {
           />
         </div>
 
-        <div className="flex-1 overflow-y-auto" style={{ padding: '0 8px 8px' }}>
-          {filtered.length === 0 && (
+        {/* Tree / search results — the whole area is a drop target for "move to root" */}
+        <div
+          className="flex-1 overflow-y-auto"
+          style={{
+            padding: '0 8px 8px',
+            outline: dropTarget === '' ? '1px dashed var(--accent)' : 'none',
+            outlineOffset: -4
+          }}
+          onDragOver={(e) => {
+            e.preventDefault()
+            if (dropTarget !== '') setDropTarget('')
+          }}
+          onDragLeave={() => setDropTarget((t) => (t === '' ? null : t))}
+          onDrop={(e) => onDropInto(e, '')}
+        >
+          {searching ? (
+            searchHits.length === 0 ? (
+              <p style={{ fontSize: 12, color: 'var(--text-faint)', fontStyle: 'italic', padding: '8px 6px' }}>
+                No matches.
+              </p>
+            ) : (
+              searchHits.map((note) => (
+                <button
+                  key={note.path}
+                  onClick={() => handleSelect(note.path)}
+                  onContextMenu={(e) => openMenu(e, 'note', note.path)}
+                  className="flex w-full flex-col rounded-md cursor-pointer transition-colors"
+                  style={{
+                    textAlign: 'left',
+                    padding: '7px 10px',
+                    marginBottom: 1,
+                    border: 'none',
+                    gap: 2,
+                    backgroundColor: note.path === activePath ? 'var(--bg-active)' : 'transparent',
+                    color: note.path === activePath ? 'var(--text-primary)' : 'var(--text-secondary)'
+                  }}
+                >
+                  <span style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {note.name}
+                  </span>
+                  {parentOf(note.path) && (
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{parentOf(note.path)}</span>
+                  )}
+                </button>
+              ))
+            )
+          ) : notes.length === 0 && folders.length === 0 ? (
             <p style={{ fontSize: 12, color: 'var(--text-faint)', fontStyle: 'italic', padding: '8px 6px' }}>
-              {notes.length === 0 ? 'No notes yet. Create one to get started.' : 'No matches.'}
+              No notes yet. Create one to get started.
             </p>
+          ) : (
+            <>
+              {tree.rootFolders.map((f) => renderFolder(f, 0))}
+              {tree.rootNotes.map((n) => renderNote(n, 0))}
+            </>
           )}
-          {filtered.map((note) => (
-            <button
-              key={note.name}
-              onClick={() => handleSelect(note.name)}
-              className="flex w-full flex-col rounded-md cursor-pointer transition-colors"
-              style={{
-                textAlign: 'left',
-                padding: '8px 10px',
-                marginBottom: 2,
-                border: 'none',
-                gap: 2,
-                backgroundColor: note.name === activeName ? 'var(--bg-active)' : 'transparent',
-                color: note.name === activeName ? 'var(--text-primary)' : 'var(--text-secondary)'
-              }}
-            >
-              <span style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {note.name}
-              </span>
-              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Created {formatRelative(note.createdAt)}</span>
-            </button>
-          ))}
         </div>
       </div>
 
       {/* Right: editor + preview */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        {activeName ? (
+        {activePath ? (
           <>
             {/* Toolbar — reserve space on the right for the window controls overlay */}
             <div
@@ -375,7 +766,7 @@ export default function NotesPanel(): JSX.Element {
                   <>
                     <button
                       onClick={() => {
-                        setRenameValue(activeName)
+                        setRenameValue(activeLeaf)
                         setRenaming(true)
                       }}
                       title="Click to rename"
@@ -391,31 +782,12 @@ export default function NotesPanel(): JSX.Element {
                         padding: 0
                       }}
                     >
-                      {activeName}
+                      {activeLeaf}
                     </button>
-                    {notesFolder && (
-                      <button
-                        onClick={() => window.api.openFile(notesFolder)}
-                        title={`Notes folder (also the CLI working directory):\n${notesFolder}\n\nClick to open in Explorer`}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 5,
-                          minWidth: 0,
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          color: 'var(--text-muted)',
-                          padding: '2px 0'
-                        }}
-                      >
-                        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                          <path d="M2 4.5V12a1.5 1.5 0 001.5 1.5h9A1.5 1.5 0 0014 12V6.5A1.5 1.5 0 0012.5 5H8L6.5 3H3.5A1.5 1.5 0 002 4.5z" />
-                        </svg>
-                        <span style={{ fontSize: 11, fontFamily: "'Cascadia Code', 'Consolas', monospace", whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {notesFolder}
-                        </span>
-                      </button>
+                    {activeFolder && (
+                      <span style={{ fontSize: 12, color: 'var(--text-faint)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        in {activeFolder}
+                      </span>
                     )}
                   </>
                 )}
@@ -463,14 +835,8 @@ export default function NotesPanel(): JSX.Element {
               </button>
             </div>
 
-            {/* Body: editor split — left column has the markdown editor with the
-                CLI docked at its bottom; right column is the live preview. */}
             <div ref={splitRef} className="flex flex-1 overflow-hidden">
-              {/* Left column: markdown editor (top) + CLI (bottom) */}
-              <div
-                className="flex flex-col shrink-0"
-                style={{ width: `${editorPct}%` }}
-              >
+              <div className="flex flex-col shrink-0" style={{ width: `${editorPct}%` }}>
                 <textarea
                   value={content}
                   onChange={(e) => handleContentChange(e.target.value)}
@@ -491,7 +857,6 @@ export default function NotesPanel(): JSX.Element {
                   }}
                 />
 
-                {/* CLI pane (expanded) docked at the bottom */}
                 {activeSessionId && cliVisible && (
                   <>
                     <div
@@ -526,7 +891,6 @@ export default function NotesPanel(): JSX.Element {
                   </>
                 )}
 
-                {/* CLI collapsed strip docked at the bottom */}
                 {activeSessionId && !cliVisible && (
                   <button
                     onClick={() => setCliVisible(true)}
@@ -548,7 +912,6 @@ export default function NotesPanel(): JSX.Element {
                 )}
               </div>
 
-              {/* Drag handle between editor and preview */}
               <div
                 onMouseDown={startSplitResize}
                 title="Drag to resize"
@@ -556,7 +919,6 @@ export default function NotesPanel(): JSX.Element {
                 style={{ width: 5, cursor: 'col-resize', borderLeft: '1px solid var(--border-primary)' }}
               />
 
-              {/* Right column: live preview */}
               <div
                 className="md-preview flex-1 overflow-y-auto"
                 style={{ height: '100%', padding: '16px 22px' }}
@@ -570,6 +932,174 @@ export default function NotesPanel(): JSX.Element {
           </div>
         )}
       </div>
+
+      {/* Context menu */}
+      {menu && (
+        <div
+          className="fixed z-50 rounded-lg py-1 shadow-xl"
+          style={{
+            left: Math.min(menu.x, window.innerWidth - 230),
+            top: Math.min(menu.y, window.innerHeight - 280),
+            minWidth: 200,
+            backgroundColor: 'var(--bg-elevated)',
+            border: '1px solid var(--border-primary)'
+          }}
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+          }}
+        >
+          {menu.kind === 'folder' && (
+            <>
+              <MenuItem label="New note here" onClick={() => { setMenu(null); handleNewNote(menu.path) }} />
+              <MenuItem label="New subfolder" onClick={() => { setMenu(null); handleNewFolder(menu.path) }} />
+              <MenuDivider />
+              <MenuItem label="Rename" onClick={() => { setMenu(null); setRenamingFolder(menu.path); setFolderRenameValue(leafOf(menu.path)) }} />
+            </>
+          )}
+          {menu.kind === 'note' && (
+            <MenuItem
+              label="Rename"
+              onClick={() => {
+                setMenu(null)
+                if (menu.path !== activePath) handleSelect(menu.path)
+                setRenameValue(leafOf(menu.path))
+                setRenaming(true)
+              }}
+            />
+          )}
+
+          {/* Move to… */}
+          {(menu.kind === 'note' || menu.kind === 'folder') && (
+            <MoveToSubmenu
+              folders={allFolderPaths}
+              item={{ kind: menu.kind, path: menu.path }}
+              onMove={async (target) => {
+                setMenu(null)
+                await performMove({ kind: menu.kind as 'note' | 'folder', path: menu.path }, target)
+              }}
+            />
+          )}
+
+          <MenuDivider />
+          {menu.kind === 'note' && (
+            <MenuItem danger label="Delete note" onClick={() => { setMenu(null); deleteNoteByPath(menu.path) }} />
+          )}
+          {menu.kind === 'folder' && (
+            <MenuItem danger label="Delete folder" onClick={() => { setMenu(null); deleteFolderByPath(menu.path) }} />
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Remove a key from a Set without mutating the original
+function deleteFrom(set: Set<string>, key: string): Set<string> {
+  const next = new Set(set)
+  next.delete(key)
+  return next
+}
+
+function MenuItem({
+  label,
+  onClick,
+  danger
+}: {
+  label: string
+  onClick: () => void
+  danger?: boolean
+}): JSX.Element {
+  return (
+    <button
+      onClick={onClick}
+      className="flex w-full items-center cursor-pointer transition-colors hover:bg-[var(--bg-active)]"
+      style={{
+        textAlign: 'left',
+        padding: '7px 14px',
+        fontSize: 13,
+        border: 'none',
+        background: 'none',
+        color: danger ? '#ef4444' : 'var(--text-secondary)'
+      }}
+    >
+      {label}
+    </button>
+  )
+}
+
+function MenuDivider(): JSX.Element {
+  return <div style={{ height: 1, margin: '4px 0', backgroundColor: 'var(--border-subtle)' }} />
+}
+
+function MoveToSubmenu({
+  folders,
+  item,
+  onMove
+}: {
+  folders: string[]
+  item: { kind: 'note' | 'folder'; path: string }
+  onMove: (target: string) => void
+}): JSX.Element {
+  const [open, setOpen] = useState(false)
+  // Valid destinations: exclude the item's current parent, and for folders also
+  // exclude itself and its descendants.
+  const currentParent = item.path.includes('/') ? item.path.slice(0, item.path.lastIndexOf('/')) : ''
+  const targets = folders.filter((f) => {
+    if (f === currentParent) return false
+    if (item.kind === 'folder') {
+      if (f === item.path || f.startsWith(item.path + '/')) return false
+    }
+    return true
+  })
+  return (
+    <div
+      style={{ position: 'relative' }}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <div
+        className="flex w-full items-center justify-between cursor-pointer transition-colors hover:bg-[var(--bg-active)]"
+        style={{ padding: '7px 14px', fontSize: 13, color: 'var(--text-secondary)' }}
+      >
+        <span>Move to…</span>
+        <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M6 4l4 4-4 4" />
+        </svg>
+      </div>
+      {open && (
+        <div
+          className="rounded-lg py-1 shadow-xl"
+          style={{
+            position: 'absolute',
+            left: '100%',
+            top: -4,
+            minWidth: 180,
+            maxHeight: 280,
+            overflowY: 'auto',
+            backgroundColor: 'var(--bg-elevated)',
+            border: '1px solid var(--border-primary)'
+          }}
+        >
+          {targets.length === 0 ? (
+            <div style={{ padding: '7px 14px', fontSize: 12, color: 'var(--text-faint)', fontStyle: 'italic' }}>
+              No destinations
+            </div>
+          ) : (
+            targets.map((f) => (
+              <button
+                key={f || '__root__'}
+                onClick={() => onMove(f)}
+                className="flex w-full items-center cursor-pointer transition-colors hover:bg-[var(--bg-active)]"
+                style={{ textAlign: 'left', padding: '6px 14px', fontSize: 13, border: 'none', background: 'none', color: 'var(--text-secondary)' }}
+              >
+                {f === '' ? '⌂ Root' : f}
+              </button>
+            ))
+          )}
+        </div>
+      )}
     </div>
   )
 }
