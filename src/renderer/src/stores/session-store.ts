@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { SessionInfo, SessionStatus } from '@shared/models'
 import { useBoardStore } from './board-store'
 
-type ViewName = 'board' | 'sessions' | 'notes'
+type ViewName = 'board' | 'sessions' | 'notes' | 'dashboard'
 
 interface SessionState {
   sessions: Record<string, SessionInfo>

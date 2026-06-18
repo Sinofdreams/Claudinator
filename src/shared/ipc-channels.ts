@@ -25,6 +25,7 @@ export const IPC = {
 
   // Stats
   STATS_TODAY: 'stats:today',
+  STATS_SUMMARY: 'stats:summary',
 
   // Settings
   SETTINGS_LOAD: 'settings:load',

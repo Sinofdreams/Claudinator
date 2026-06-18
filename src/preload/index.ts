@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '@shared/ipc-channels'
 import { BoardState, SessionInfo, ThemeOverrides, CustomTheme, NoteMeta } from '@shared/models'
+import type { StatsSummary } from '@shared/stats'
 
 const api = {
   // Board
@@ -56,6 +57,8 @@ const api = {
     sessions: number
     toolCalls: number
   }> => ipcRenderer.invoke(IPC.STATS_TODAY),
+  getStatsSummary: (force?: boolean): Promise<StatsSummary | null> =>
+    ipcRenderer.invoke(IPC.STATS_SUMMARY, force),
 
   // Settings
   loadSettings: (): Promise<{

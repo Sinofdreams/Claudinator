@@ -4,6 +4,14 @@ All notable changes to Claude Code Orchestrator will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.5] - 2026-06-18
+
+### Added
+- Usage Dashboard: click the token badge at the bottom of the sidebar to open a full dashboard of your Claude Code usage — today's tokens / messages / sessions / tool calls / estimated cost, a 30-day tokens-over-time chart, a by-model breakdown (Opus / Sonnet / Haiku), activity-by-hour, all-time totals, and top projects. Charts powered by recharts.
+
+### Fixed
+- Sidebar token badge no longer gets stuck on a stale day. Usage is now computed live from the session transcripts in `~/.claude/projects` (streamed with bounded memory) instead of Claude Code's rarely-refreshed `stats-cache.json`, so it always reflects the current day.
+
 ## [0.1.4] - 2026-06-12
 
 ### Added

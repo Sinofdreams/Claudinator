@@ -119,12 +119,15 @@ export default function Sidebar(): JSX.Element {
 
       <div className="flex-1" />
 
-      {/* Token usage */}
-      {stats && stats.tokens > 0 && (
+      {/* Token usage → opens the stats dashboard */}
+      {stats && (
         <button
+          onClick={() => setCurrentView('dashboard')}
           className="flex h-9 w-9 flex-col items-center justify-center gap-0.5 rounded-lg transition-colors cursor-pointer"
-          style={{ color: 'var(--text-muted)', backgroundColor: 'var(--bg-button)' }}
-          title={`${stats.date}: ${stats.tokens.toLocaleString()} tokens, ${stats.messages} messages, ${stats.sessions} sessions, ${stats.toolCalls} tool calls`}
+          style={currentView === 'dashboard'
+            ? { color: 'var(--text-primary)', backgroundColor: 'var(--bg-active)' }
+            : { color: 'var(--text-muted)', backgroundColor: 'var(--bg-button)' }}
+          title={`Today — ${stats.tokens.toLocaleString()} tokens, ${stats.messages} messages, ${stats.sessions} sessions, ${stats.toolCalls} tool calls. Click for dashboard.`}
         >
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3">
             <path d="M2 12l3-4 2.5 2L11 5l3 3" strokeLinecap="round" strokeLinejoin="round" />
