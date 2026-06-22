@@ -54,13 +54,20 @@ export interface AllTime {
   firstDate: string
 }
 
+// Totals for the currently-selected time window (driven by the dashboard range picker).
+export interface RangeTotals extends DayTotals {
+  label: string // human label, e.g. "Last 7 days"
+  days: number // window size in days; 0 = all time
+}
+
 export interface StatsSummary {
-  today: DayTotals
-  allTime: AllTime
-  daily: DayStat[] // chronological, trailing window
-  models: ModelStat[] // sorted desc by tokens
-  hourly: HourStat[] // 24 entries
-  projects: ProjectStat[] // top, sorted desc by tokens
+  today: DayTotals // always today, regardless of selected range
+  range: RangeTotals // totals over the selected window
+  allTime: AllTime // always full history, regardless of selected range
+  daily: DayStat[] // window series, chronological
+  models: ModelStat[] // window, sorted desc by tokens
+  hourly: HourStat[] // window, 24 entries
+  projects: ProjectStat[] // window, top, sorted desc by tokens
   computedFromFiles: number
   generatedAt: string // ISO
 }
@@ -68,6 +75,20 @@ export interface StatsSummary {
 export const EMPTY_SUMMARY: StatsSummary = {
   today: {
     date: '',
+    tokens: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheCreationTokens: 0,
+    cacheReadTokens: 0,
+    messages: 0,
+    sessions: 0,
+    toolCalls: 0,
+    cost: 0
+  },
+  range: {
+    date: '',
+    label: 'All time',
+    days: 0,
     tokens: 0,
     inputTokens: 0,
     outputTokens: 0,

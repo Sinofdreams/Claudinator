@@ -4,6 +4,15 @@ All notable changes to Claude Code Orchestrator will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.7] - 2026-06-22
+
+### Added
+- Usage Dashboard time-range filter: pick **Last 24 hours / 7 days / 30 days / 90 days / All time** (default 7 days). Every panel — the headline cards, tokens-over-time chart, by-model breakdown, activity-by-hour, and top projects — reflects the selected window. The "All time" panel stays full-history as a fixed reference.
+- Usage Dashboard auto-refresh control: choose **Off / 30s / 1m / 5m / 15m** (default 5 min). Both controls remember your choice across restarts.
+
+### Changed
+- Stats are now scanned once into per-day buckets (cached ~5 min) and any time window is derived from them instantly, so switching the range never re-reads your transcripts.
+
 ## [0.1.6] - 2026-06-18
 
 ### Added

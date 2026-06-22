@@ -29,12 +29,12 @@ export function registerStatsIpc(): void {
     }
   })
 
-  // Full dashboard summary.
+  // Full dashboard summary for a given time window (rangeDays: 0 = all time).
   ipcMain.handle(
     IPC.STATS_SUMMARY,
-    async (_e, force?: boolean): Promise<StatsSummary | null> => {
+    async (_e, rangeDays?: number, force?: boolean): Promise<StatsSummary | null> => {
       try {
-        return await computeStatsSummary(30, !!force)
+        return await computeStatsSummary(rangeDays ?? 0, !!force)
       } catch {
         return null
       }

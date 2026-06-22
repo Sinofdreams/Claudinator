@@ -6,6 +6,10 @@ import { homedir } from 'os'
 import type {
   StatsSummary,
   DayTotals,
+  RangeTotals,
+  AllTime,
+  DayStat,
+  HourStat,
   ModelStat,
   ProjectStat
 } from '@shared/stats'
@@ -18,14 +22,15 @@ interface Pricing {
   cacheWrite: number
   cacheRead: number
 }
-const PRICING: Record<'opus' | 'sonnet' | 'haiku' | 'default', Pricing> = {
+type Family = 'opus' | 'sonnet' | 'haiku' | 'default'
+const PRICING: Record<Family, Pricing> = {
   opus: { input: 15, output: 75, cacheWrite: 18.75, cacheRead: 1.5 },
   sonnet: { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },
   haiku: { input: 0.8, output: 4, cacheWrite: 1, cacheRead: 0.08 },
   default: { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 }
 }
 
-function modelFamily(model: string): 'opus' | 'sonnet' | 'haiku' | 'default' {
+function modelFamily(model: string): Family {
   const m = model.toLowerCase()
   if (m.includes('opus')) return 'opus'
   if (m.includes('sonnet')) return 'sonnet'
@@ -50,7 +55,25 @@ function modelColor(label: string): string {
   return MODEL_COLORS[label] ?? '#94a3b8'
 }
 
-function costFor(family: keyof typeof PRICING, u: UsageTotals): number {
+interface UsageTotals {
+  input: number
+  output: number
+  cacheCreation: number
+  cacheRead: number
+}
+function zero(): UsageTotals {
+  return { input: 0, output: 0, cacheCreation: 0, cacheRead: 0 }
+}
+function addInto(t: UsageTotals, s: UsageTotals): void {
+  t.input += s.input
+  t.output += s.output
+  t.cacheCreation += s.cacheCreation
+  t.cacheRead += s.cacheRead
+}
+function tokensOf(u: UsageTotals): number {
+  return u.input + u.output + u.cacheCreation + u.cacheRead
+}
+function costFor(family: Family, u: UsageTotals): number {
   const p = PRICING[family]
   return (
     (u.input * p.input +
@@ -61,16 +84,17 @@ function costFor(family: keyof typeof PRICING, u: UsageTotals): number {
   )
 }
 
-interface UsageTotals {
-  input: number
-  output: number
-  cacheCreation: number
-  cacheRead: number
-}
-
 // Local YYYY-MM-DD ('en-CA' formats as ISO date in local tz)
 function localDay(ts: string): string {
   return new Date(ts).toLocaleDateString('en-CA')
+}
+function dayMinus(nowMs: number, n: number): string {
+  return new Date(nowMs - n * 86_400_000).toLocaleDateString('en-CA')
+}
+function rangeLabel(days: number): string {
+  if (days <= 0) return 'All time'
+  if (days === 1) return 'Last 24 hours'
+  return `Last ${days} days`
 }
 
 interface RawUsage {
@@ -80,22 +104,34 @@ interface RawUsage {
   cache_read_input_tokens?: number
 }
 
-// ---- Accumulators ----
-interface DayAcc extends UsageTotals {
+// ---- Per-day bucket: retains model/project/hour sub-breakdowns so any time
+// window can be derived later from a single scan without re-reading the files. ----
+interface DayBucket {
+  totals: UsageTotals
   messages: number
   toolCalls: number
   sessions: Set<string>
+  models: Map<string, { totals: UsageTotals; family: Family }>
+  projects: Map<string, { totals: UsageTotals; sessions: Set<string> }>
+  hours: number[] // 24, tokens
 }
-function emptyDay(): DayAcc {
+function emptyBucket(): DayBucket {
   return {
-    input: 0,
-    output: 0,
-    cacheCreation: 0,
-    cacheRead: 0,
+    totals: zero(),
     messages: 0,
     toolCalls: 0,
-    sessions: new Set()
+    sessions: new Set(),
+    models: new Map(),
+    projects: new Map(),
+    hours: new Array<number>(24).fill(0)
   }
+}
+
+interface RawBuckets {
+  byDay: Map<string, DayBucket>
+  firstDate: string
+  fileCount: number
+  generatedAt: number // ms
 }
 
 async function listTranscripts(root: string): Promise<string[]> {
@@ -109,8 +145,10 @@ async function listTranscripts(root: string): Promise<string[]> {
   for (const e of entries) {
     if (e.isFile() && e.name.endsWith('.jsonl')) {
       // Dirent.parentPath (Node 20+) gives the containing dir
-      const parent = (e as unknown as { parentPath?: string; path?: string }).parentPath ??
-        (e as unknown as { path?: string }).path ?? root
+      const parent =
+        (e as unknown as { parentPath?: string; path?: string }).parentPath ??
+        (e as unknown as { path?: string }).path ??
+        root
       out.push(join(parent, e.name))
     }
   }
@@ -152,39 +190,33 @@ async function streamFiles(
   await Promise.all(Array.from({ length: n }, () => worker()))
 }
 
-// In-memory cache + in-flight dedupe. Scanning ~1 GB of transcripts is non-trivial,
-// so cache for a few minutes AND ensure only one scan runs at a time no matter how
-// many callers (dashboard mount, 60s interval, the badge's 30s poll) ask at once —
-// otherwise concurrent scans pile up and thrash, and the dashboard hangs forever.
-let cache: { summary: StatsSummary; at: number } | null = null
-let inflight: Promise<StatsSummary> | null = null
+// In-memory raw-bucket cache + in-flight dedupe. Scanning ~1 GB of transcripts is
+// non-trivial, so we scan ONCE into rich per-day buckets, cache those for a few
+// minutes, and derive each requested time window from them cheaply — flipping the
+// range picker never triggers a re-scan. The in-flight promise ensures only one
+// scan runs at a time no matter how many callers (dashboard mount, refresh
+// interval, the badge poll) ask at once.
+let rawCache: { raw: RawBuckets; at: number } | null = null
+let inflight: Promise<RawBuckets> | null = null
 const CACHE_MS = 300_000
 
-export async function computeStatsSummary(maxDays = 30, force = false): Promise<StatsSummary> {
-  if (!force && cache && Date.now() - cache.at < CACHE_MS) return cache.summary
-  if (inflight) return inflight
-  inflight = computeFresh(maxDays).finally(() => {
+export async function computeStatsSummary(rangeDays = 0, force = false): Promise<StatsSummary> {
+  const fresh = !force && rawCache && Date.now() - rawCache.at < CACHE_MS
+  if (fresh && rawCache) return buildSummary(rawCache.raw, rangeDays)
+  if (inflight) return inflight.then((raw) => buildSummary(raw, rangeDays))
+  inflight = scanRaw().finally(() => {
     inflight = null
   })
-  return inflight
+  const raw = await inflight
+  return buildSummary(raw, rangeDays)
 }
 
-async function computeFresh(maxDays: number): Promise<StatsSummary> {
+async function scanRaw(): Promise<RawBuckets> {
   const nowMs = Date.now()
-
   const projectsRoot = join(homedir(), '.claude', 'projects')
   const files = await listTranscripts(projectsRoot)
-  if (files.length === 0) {
-    const empty = { ...EMPTY_SUMMARY, generatedAt: new Date(nowMs).toISOString() }
-    cache = { summary: empty, at: nowMs }
-    return empty
-  }
 
-  const byDay = new Map<string, DayAcc>()
-  const byModel = new Map<string, { totals: UsageTotals; family: keyof typeof PRICING }>()
-  const byProject = new Map<string, { totals: UsageTotals; sessions: Set<string> }>()
-  const byHour = new Array<number>(24).fill(0)
-  const allSessions = new Set<string>()
+  const byDay = new Map<string, DayBucket>()
   let firstDate = ''
 
   const addUsage = (t: UsageTotals, u: RawUsage): number => {
@@ -200,192 +232,263 @@ async function computeFresh(maxDays: number): Promise<StatsSummary> {
   }
 
   const handleLine = (line: string): void => {
-      if (line.length < 2 || line[0] !== '{') return
-      let obj: {
-        type?: string
-        timestamp?: string
-        sessionId?: string
-        cwd?: string
-        message?: { model?: string; usage?: RawUsage; content?: unknown }
+    if (line.length < 2 || line[0] !== '{') return
+    let obj: {
+      type?: string
+      timestamp?: string
+      sessionId?: string
+      cwd?: string
+      message?: { model?: string; usage?: RawUsage; content?: unknown }
+    }
+    try {
+      obj = JSON.parse(line)
+    } catch {
+      return
+    }
+    const ts = obj.timestamp
+    const sid = obj.sessionId
+
+    if (obj.type === 'assistant' && obj.message?.usage && ts) {
+      const usage = obj.message.usage
+      const model = obj.message.model ?? 'unknown'
+      const family = modelFamily(model)
+      const day = localDay(ts)
+      if (!firstDate || day < firstDate) firstDate = day
+
+      const b = byDay.get(day) ?? emptyBucket()
+      const total = addUsage(b.totals, usage)
+      b.messages += 1
+      if (sid) b.sessions.add(sid)
+
+      b.hours[new Date(ts).getHours()] += total
+
+      const mEntry = b.models.get(model) ?? { totals: zero(), family }
+      addUsage(mEntry.totals, usage)
+      b.models.set(model, mEntry)
+
+      const cwd = obj.cwd
+      if (cwd) {
+        const pEntry = b.projects.get(cwd) ?? { totals: zero(), sessions: new Set<string>() }
+        addUsage(pEntry.totals, usage)
+        if (sid) pEntry.sessions.add(sid)
+        b.projects.set(cwd, pEntry)
       }
-      try {
-        obj = JSON.parse(line)
-      } catch {
-        return
-      }
-      const ts = obj.timestamp
-      const sid = obj.sessionId
 
-      if (obj.type === 'assistant' && obj.message?.usage && ts) {
-        const usage = obj.message.usage
-        const model = obj.message.model ?? 'unknown'
-        const family = modelFamily(model)
-        const day = localDay(ts)
-        if (!firstDate || day < firstDate) firstDate = day
-
-        const acc = byDay.get(day) ?? emptyDay()
-        const total = addUsage(acc, usage)
-        acc.messages += 1
-        if (sid) acc.sessions.add(sid)
-        byDay.set(day, acc)
-
-        const hr = new Date(ts).getHours()
-        byHour[hr] += total
-
-        const mEntry = byModel.get(model) ?? { totals: zero(), family }
-        addUsage(mEntry.totals, usage)
-        byModel.set(model, mEntry)
-
-        const cwd = obj.cwd
-        if (cwd) {
-          const pEntry = byProject.get(cwd) ?? { totals: zero(), sessions: new Set<string>() }
-          addUsage(pEntry.totals, usage)
-          if (sid) pEntry.sessions.add(sid)
-          byProject.set(cwd, pEntry)
-        }
-
-        if (sid) allSessions.add(sid)
-
-        // Count tool calls in this assistant message's content
-        const content = obj.message.content
-        if (Array.isArray(content)) {
-          for (const block of content) {
-            if (block && typeof block === 'object' && (block as { type?: string }).type === 'tool_use') {
-              acc.toolCalls += 1
-            }
+      // Count tool calls in this assistant message's content
+      const content = obj.message.content
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          if (
+            block &&
+            typeof block === 'object' &&
+            (block as { type?: string }).type === 'tool_use'
+          ) {
+            b.toolCalls += 1
           }
         }
-      } else if (obj.type === 'user' && ts) {
-        // Count genuine user prompts (string content), not tool_result echoes
-        const content = obj.message?.content
-        if (typeof content === 'string') {
-          const day = localDay(ts)
-          const acc = byDay.get(day) ?? emptyDay()
-          acc.messages += 1
-          if (sid) acc.sessions.add(sid)
-          byDay.set(day, acc)
-        }
       }
+
+      byDay.set(day, b)
+    } else if (obj.type === 'user' && ts) {
+      // Count genuine user prompts (string content), not tool_result echoes
+      const content = obj.message?.content
+      if (typeof content === 'string') {
+        const day = localDay(ts)
+        const b = byDay.get(day) ?? emptyBucket()
+        b.messages += 1
+        if (sid) b.sessions.add(sid)
+        byDay.set(day, b)
+      }
+    }
   }
 
   // Stream each file line-by-line with bounded concurrency so memory stays flat
   // regardless of total transcript size (yours can exceed 1 GB).
   await streamFiles(files, handleLine, 4)
 
-  // ---- Build summary ----
-  const todayKey = new Date(nowMs).toLocaleDateString('en-CA')
-  const today = dayTotals(todayKey, byDay.get(todayKey) ?? emptyDay())
+  const raw: RawBuckets = { byDay, firstDate, fileCount: files.length, generatedAt: nowMs }
+  rawCache = { raw, at: nowMs }
+  return raw
+}
 
-  const sortedDays = [...byDay.keys()].sort()
-  const windowDays = sortedDays.slice(-maxDays)
-  const daily = windowDays.map((d) => {
-    const a = byDay.get(d)!
-    const fam = 'default' as const // per-day cost uses blended estimate below
-    void fam
-    return {
-      date: d,
-      tokens: a.input + a.output + a.cacheCreation + a.cacheRead,
-      inputTokens: a.input,
-      outputTokens: a.output,
-      messages: a.messages,
-      sessions: a.sessions.size,
-      cost: 0 // filled after model-weighted blend below
+// ---- Pure derivation: collapse a set of days into one merged view ----
+interface Merged {
+  totals: UsageTotals
+  messages: number
+  toolCalls: number
+  sessions: Set<string>
+  models: Map<string, { totals: UsageTotals; family: Family }>
+  projects: Map<string, { totals: UsageTotals; sessions: Set<string> }>
+  hours: number[]
+}
+function aggregate(byDay: Map<string, DayBucket>, days: string[]): Merged {
+  const m: Merged = {
+    totals: zero(),
+    messages: 0,
+    toolCalls: 0,
+    sessions: new Set(),
+    models: new Map(),
+    projects: new Map(),
+    hours: new Array<number>(24).fill(0)
+  }
+  for (const d of days) {
+    const b = byDay.get(d)
+    if (!b) continue
+    addInto(m.totals, b.totals)
+    m.messages += b.messages
+    m.toolCalls += b.toolCalls
+    for (const s of b.sessions) m.sessions.add(s)
+    for (const [model, mv] of b.models) {
+      const e = m.models.get(model) ?? { totals: zero(), family: mv.family }
+      addInto(e.totals, mv.totals)
+      m.models.set(model, e)
     }
-  })
+    for (const [proj, pv] of b.projects) {
+      const e = m.projects.get(proj) ?? { totals: zero(), sessions: new Set<string>() }
+      addInto(e.totals, pv.totals)
+      for (const s of pv.sessions) e.sessions.add(s)
+      m.projects.set(proj, e)
+    }
+    for (let h = 0; h < 24; h++) m.hours[h] += b.hours[h]
+  }
+  return m
+}
 
-  // Model stats + total cost
-  const models: ModelStat[] = []
-  let allCost = 0
-  let allInput = 0
-  let allOutput = 0
-  let allTokens = 0
-  // Aggregate by friendly family label so multiple Opus/Sonnet model ids collapse
-  // into a single breakdown entry.
+interface ModelBuild {
+  models: ModelStat[]
+  cost: number
+  input: number
+  output: number
+  tokens: number
+}
+function buildModels(models: Map<string, { totals: UsageTotals; family: Family }>): ModelBuild {
+  let cost = 0
+  let input = 0
+  let output = 0
+  let tokens = 0
+  // Collapse multiple model ids into friendly family labels.
   const byLabel = new Map<string, { tokens: number; cost: number }>()
-  for (const [model, { totals, family }] of byModel) {
+  for (const [model, { totals, family }] of models) {
     const c = costFor(family, totals)
-    const tokens = totals.input + totals.output + totals.cacheCreation + totals.cacheRead
-    allCost += c
-    allInput += totals.input
-    allOutput += totals.output
-    allTokens += tokens
-    if (tokens <= 0) continue // skip synthetic / zero-token models
+    const tk = tokensOf(totals)
+    cost += c
+    input += totals.input
+    output += totals.output
+    tokens += tk
+    if (tk <= 0) continue
     const label = modelLabel(model)
     const agg = byLabel.get(label) ?? { tokens: 0, cost: 0 }
-    agg.tokens += tokens
+    agg.tokens += tk
     agg.cost += c
     byLabel.set(label, agg)
   }
+  const out: ModelStat[] = []
   for (const [label, agg] of byLabel) {
-    models.push({ model: label, label, tokens: agg.tokens, cost: agg.cost, color: modelColor(label) })
+    out.push({ model: label, label, tokens: agg.tokens, cost: agg.cost, color: modelColor(label) })
   }
-  const visibleModels = models
-  visibleModels.sort((a, b) => b.tokens - a.tokens)
+  out.sort((a, b) => b.tokens - a.tokens)
+  return { models: out, cost, input, output, tokens }
+}
 
-  // Blended cost-per-token to estimate per-day + today cost
-  const costPerToken = allTokens > 0 ? allCost / allTokens : 0
-  for (const d of daily) d.cost = d.tokens * costPerToken
-  const todayCost = today.tokens * costPerToken
+function buildSummary(raw: RawBuckets, rangeDays: number): StatsSummary {
+  const nowMs = raw.generatedAt
+  if (raw.byDay.size === 0) {
+    return { ...EMPTY_SUMMARY, generatedAt: new Date(nowMs).toISOString() }
+  }
 
-  const projects: ProjectStat[] = [...byProject.entries()]
+  const allDays = [...raw.byDay.keys()].sort()
+  const todayKey = new Date(nowMs).toLocaleDateString('en-CA')
+  const cutoff = rangeDays > 0 ? dayMinus(nowMs, rangeDays - 1) : ''
+  const windowDays = rangeDays > 0 ? allDays.filter((d) => d >= cutoff) : allDays
+
+  // ---- Selected window ----
+  const win = aggregate(raw.byDay, windowDays)
+  const winModels = buildModels(win.models)
+  const winCostPerToken = winModels.tokens > 0 ? winModels.cost / winModels.tokens : 0
+
+  const daily: DayStat[] = windowDays.map((d) => {
+    const b = raw.byDay.get(d)!
+    const tk = tokensOf(b.totals)
+    return {
+      date: d,
+      tokens: tk,
+      inputTokens: b.totals.input,
+      outputTokens: b.totals.output,
+      messages: b.messages,
+      sessions: b.sessions.size,
+      cost: tk * winCostPerToken
+    }
+  })
+
+  const hourly: HourStat[] = win.hours.map((tokens, hour) => ({ hour, tokens }))
+
+  const projects: ProjectStat[] = [...win.projects.entries()]
     .map(([project, v]) => ({
       project,
       label: basename(project),
-      tokens: v.totals.input + v.totals.output + v.totals.cacheCreation + v.totals.cacheRead,
+      tokens: tokensOf(v.totals),
       sessions: v.sessions.size
     }))
     .sort((a, b) => b.tokens - a.tokens)
     .slice(0, 8)
 
-  const hourly = byHour.map((tokens, hour) => ({ hour, tokens }))
-
-  let allMessages = 0
-  let allToolCalls = 0
-  for (const a of byDay.values()) {
-    allMessages += a.messages
-    allToolCalls += a.toolCalls
+  const range: RangeTotals = {
+    label: rangeLabel(rangeDays),
+    days: rangeDays,
+    date: '',
+    tokens: tokensOf(win.totals),
+    inputTokens: win.totals.input,
+    outputTokens: win.totals.output,
+    cacheCreationTokens: win.totals.cacheCreation,
+    cacheReadTokens: win.totals.cacheRead,
+    messages: win.messages,
+    sessions: win.sessions.size,
+    toolCalls: win.toolCalls,
+    cost: winModels.cost
   }
 
-  const summary: StatsSummary = {
-    today: { ...today, cost: todayCost },
-    allTime: {
-      tokens: allTokens,
-      inputTokens: allInput,
-      outputTokens: allOutput,
-      messages: allMessages,
-      sessions: allSessions.size,
-      toolCalls: allToolCalls,
-      cost: allCost,
-      firstDate
-    },
+  // ---- All time (always full history) ----
+  const all = rangeDays > 0 ? aggregate(raw.byDay, allDays) : win
+  const allModels = rangeDays > 0 ? buildModels(all.models) : winModels
+  const allCostPerToken = allModels.tokens > 0 ? allModels.cost / allModels.tokens : 0
+
+  const allTime: AllTime = {
+    tokens: tokensOf(all.totals),
+    inputTokens: all.totals.input,
+    outputTokens: all.totals.output,
+    messages: all.messages,
+    sessions: all.sessions.size,
+    toolCalls: all.toolCalls,
+    cost: allModels.cost,
+    firstDate: raw.firstDate
+  }
+
+  // ---- Today (always today) ----
+  const tb = raw.byDay.get(todayKey)
+  const todayTokens = tb ? tokensOf(tb.totals) : 0
+  const today: DayTotals = {
+    date: todayKey,
+    tokens: todayTokens,
+    inputTokens: tb ? tb.totals.input : 0,
+    outputTokens: tb ? tb.totals.output : 0,
+    cacheCreationTokens: tb ? tb.totals.cacheCreation : 0,
+    cacheReadTokens: tb ? tb.totals.cacheRead : 0,
+    messages: tb ? tb.messages : 0,
+    sessions: tb ? tb.sessions.size : 0,
+    toolCalls: tb ? tb.toolCalls : 0,
+    cost: todayTokens * allCostPerToken
+  }
+
+  return {
+    today,
+    range,
+    allTime,
     daily,
-    models: visibleModels,
+    models: winModels.models,
     hourly,
     projects,
-    computedFromFiles: files.length,
+    computedFromFiles: raw.fileCount,
     generatedAt: new Date(nowMs).toISOString()
-  }
-
-  cache = { summary, at: nowMs }
-  return summary
-}
-
-function zero(): UsageTotals {
-  return { input: 0, output: 0, cacheCreation: 0, cacheRead: 0 }
-}
-
-function dayTotals(date: string, a: DayAcc): DayTotals {
-  return {
-    date,
-    tokens: a.input + a.output + a.cacheCreation + a.cacheRead,
-    inputTokens: a.input,
-    outputTokens: a.output,
-    cacheCreationTokens: a.cacheCreation,
-    cacheReadTokens: a.cacheRead,
-    messages: a.messages,
-    sessions: a.sessions.size,
-    toolCalls: a.toolCalls,
-    cost: 0
   }
 }
 
