@@ -148,29 +148,178 @@ function Panel({
   )
 }
 
+// Time-window presets (days; 0 = all time) and auto-refresh intervals (ms; 0 = off).
+const RANGE_OPTIONS = [
+  { label: 'Last 24 hours', value: 1, short: '24h' },
+  { label: 'Last 7 days', value: 7, short: '7d' },
+  { label: 'Last 30 days', value: 30, short: '30d' },
+  { label: 'Last 90 days', value: 90, short: '90d' },
+  { label: 'All time', value: 0, short: 'All' }
+]
+const REFRESH_OPTIONS = [
+  { label: 'Off', value: 0 },
+  { label: '30s', value: 30_000 },
+  { label: '1m', value: 60_000 },
+  { label: '5m', value: 300_000 },
+  { label: '15m', value: 900_000 }
+]
+
+function Dropdown({
+  options,
+  value,
+  onChange,
+  leadingIcon,
+  ariaLabel
+}: {
+  options: { label: string; value: number }[]
+  value: number
+  onChange: (v: number) => void
+  leadingIcon?: JSX.Element
+  ariaLabel?: string
+}): JSX.Element {
+  const [open, setOpen] = useState(false)
+  const current = options.find((o) => o.value === value) ?? options[0]
+  return (
+    <div className="relative" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-label={ariaLabel}
+        className="flex items-center gap-2 rounded-lg transition-colors cursor-pointer hover:opacity-90"
+        style={{
+          height: 38,
+          padding: '0 12px',
+          backgroundColor: 'var(--bg-button)',
+          color: 'var(--text-secondary)',
+          border: '1px solid var(--border-subtle)'
+        }}
+      >
+        {leadingIcon}
+        <span className="text-xs font-medium whitespace-nowrap">{current.label}</span>
+        <svg
+          width="11"
+          height="11"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ opacity: 0.7 }}
+        >
+          <path d="M4 6l4 4 4-4" />
+        </svg>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0" style={{ zIndex: 40 }} onClick={() => setOpen(false)} />
+          <div
+            className="absolute overflow-hidden rounded-lg shadow-lg"
+            style={
+              {
+                top: '100%',
+                right: 0,
+                marginTop: 6,
+                minWidth: 150,
+                zIndex: 50,
+                backgroundColor: 'var(--bg-elevated)',
+                border: '1px solid var(--border-primary)',
+                WebkitAppRegion: 'no-drag'
+              } as React.CSSProperties
+            }
+          >
+            {options.map((o) => {
+              const active = o.value === value
+              return (
+                <button
+                  key={o.value}
+                  onClick={() => {
+                    onChange(o.value)
+                    setOpen(false)
+                  }}
+                  className="flex w-full items-center justify-between text-left text-xs transition-colors cursor-pointer hover:opacity-90"
+                  style={{
+                    padding: '9px 13px',
+                    color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    backgroundColor: active ? 'var(--bg-active)' : 'transparent'
+                  }}
+                >
+                  <span>{o.label}</span>
+                  {active && (
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      style={{ color: 'var(--accent)' }}
+                    >
+                      <path d="M3 8.5l3.5 3.5L13 4" />
+                    </svg>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 export default function DashboardPanel(): JSX.Element {
   const [data, setData] = useState<StatsSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [rangeDays, setRangeDays] = useState<number>(() => {
+    const v = Number(localStorage.getItem('dash-range'))
+    return RANGE_OPTIONS.some((o) => o.value === v) ? v : 7
+  })
+  const [autoRefreshMs, setAutoRefreshMs] = useState<number>(() => {
+    const v = Number(localStorage.getItem('dash-refresh'))
+    return REFRESH_OPTIONS.some((o) => o.value === v) ? v : 300_000
+  })
 
-  const load = useCallback(async (force = false) => {
-    if (force) setRefreshing(true)
-    try {
-      const result = await window.api.getStatsSummary(force)
-      if (result) setData(result)
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false)
-      setRefreshing(false)
-    }
+  const changeRange = useCallback((v: number) => {
+    setRangeDays(v)
+    localStorage.setItem('dash-range', String(v))
+  }, [])
+  const changeRefresh = useCallback((v: number) => {
+    setAutoRefreshMs(v)
+    localStorage.setItem('dash-refresh', String(v))
   }, [])
 
+  const load = useCallback(
+    async (force = false) => {
+      if (force) setRefreshing(true)
+      try {
+        // Switching range derives instantly from cached buckets; only the manual
+        // refresh / auto-refresh tick forces a re-scan of the transcripts.
+        const result = await window.api.getStatsSummary(rangeDays, force)
+        if (result) setData(result)
+      } catch {
+        // ignore
+      } finally {
+        setLoading(false)
+        setRefreshing(false)
+      }
+    },
+    [rangeDays]
+  )
+
+  // Reload whenever the range changes (load identity depends on rangeDays).
   useEffect(() => {
     load()
-    const interval = setInterval(() => load(), 60_000)
-    return () => clearInterval(interval)
   }, [load])
+
+  // Auto-refresh: a real re-scan on the chosen cadence, Grafana-style.
+  useEffect(() => {
+    if (autoRefreshMs <= 0) return
+    const id = setInterval(() => load(true), autoRefreshMs)
+    return () => clearInterval(id)
+  }, [autoRefreshMs, load])
 
   if (loading && !data) {
     return (
@@ -197,9 +346,10 @@ export default function DashboardPanel(): JSX.Element {
     )
   }
 
-  const { today, allTime, daily, models, hourly, projects } = data
+  const { range, allTime, daily, models, hourly, projects } = data
   const maxProjectTokens = Math.max(1, ...projects.map((p) => p.tokens))
   const generated = data.generatedAt ? new Date(data.generatedAt).toLocaleTimeString() : ''
+  const rangeShort = RANGE_OPTIONS.find((o) => o.value === rangeDays)?.short ?? `${rangeDays}d`
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden" style={{ backgroundColor: 'var(--bg-primary)' }}>
@@ -218,6 +368,50 @@ export default function DashboardPanel(): JSX.Element {
           Live · {data.computedFromFiles} transcripts · updated {generated}
         </span>
         <div className="flex-1" />
+        <Dropdown
+          options={RANGE_OPTIONS}
+          value={rangeDays}
+          onChange={changeRange}
+          ariaLabel="Time range"
+          leadingIcon={
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ opacity: 0.8 }}
+            >
+              <circle cx="8" cy="8" r="6" />
+              <path d="M8 5v3l2 1.5" />
+            </svg>
+          }
+        />
+        <Dropdown
+          options={REFRESH_OPTIONS}
+          value={autoRefreshMs}
+          onChange={changeRefresh}
+          ariaLabel="Auto-refresh interval"
+          leadingIcon={
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ opacity: 0.8 }}
+            >
+              <path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9" />
+              <path d="M13.5 2v3h-3" />
+            </svg>
+          }
+        />
         <button
           onClick={() => load(true)}
           disabled={refreshing}
@@ -246,22 +440,22 @@ export default function DashboardPanel(): JSX.Element {
       <div className="flex-1 overflow-y-auto">
         <div style={{ padding: '24px 32px 56px', display: 'flex', flexDirection: 'column', gap: 24 }}>
 
-        {/* Today's headline cards */}
+        {/* Selected-range headline cards */}
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
           <StatCard
-            label="Today · Tokens"
-            value={fmtTokens(today.tokens)}
-            sub={`${fmtNum(today.inputTokens)} in / ${fmtNum(today.outputTokens)} out`}
+            label={`${rangeShort} · Tokens`}
+            value={fmtTokens(range.tokens)}
+            sub={`${fmtNum(range.inputTokens)} in / ${fmtNum(range.outputTokens)} out`}
           />
-          <StatCard label="Today · Messages" value={fmtNum(today.messages)} />
-          <StatCard label="Today · Sessions" value={fmtNum(today.sessions)} />
-          <StatCard label="Today · Tool calls" value={fmtNum(today.toolCalls)} />
-          <StatCard label="Today · Est. cost" value={fmtUSD(today.cost)} sub="approx" />
+          <StatCard label={`${rangeShort} · Messages`} value={fmtNum(range.messages)} />
+          <StatCard label={`${rangeShort} · Sessions`} value={fmtNum(range.sessions)} />
+          <StatCard label={`${rangeShort} · Tool calls`} value={fmtNum(range.toolCalls)} />
+          <StatCard label={`${rangeShort} · Est. cost`} value={fmtUSD(range.cost)} sub="approx" />
         </div>
 
         {/* Tokens over time */}
         <div>
-          <Panel title="Tokens over time (last 30 days)">
+          <Panel title={`Tokens over time · ${range.label}`}>
             <div className="h-80 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={daily} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>

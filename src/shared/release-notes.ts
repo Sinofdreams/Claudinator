@@ -10,6 +10,16 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '0.1.7',
+    date: '2026-06-22',
+    summary: 'Filter your usage by time range.',
+    highlights: [
+      'Usage Dashboard now has a time-range filter — Last 24 hours, 7 days, 30 days, 90 days, or All time (defaults to 7 days). Every chart and card reflects the window you pick.',
+      'New auto-refresh control (Off / 30s / 1m / 5m / 15m, default 5 min). Both choices are remembered across restarts.',
+      'Switching the range is instant — stats are scanned once and any window is derived from a cache, so it never re-reads your transcripts.'
+    ]
+  },
+  {
     version: '0.1.6',
     date: '2026-06-18',
     summary: 'Organize your notes and read the board at a glance.',

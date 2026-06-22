@@ -57,8 +57,8 @@ const api = {
     sessions: number
     toolCalls: number
   }> => ipcRenderer.invoke(IPC.STATS_TODAY),
-  getStatsSummary: (force?: boolean): Promise<StatsSummary | null> =>
-    ipcRenderer.invoke(IPC.STATS_SUMMARY, force),
+  getStatsSummary: (rangeDays?: number, force?: boolean): Promise<StatsSummary | null> =>
+    ipcRenderer.invoke(IPC.STATS_SUMMARY, rangeDays, force),
 
   // Settings
   loadSettings: (): Promise<{
