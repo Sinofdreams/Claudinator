@@ -15,7 +15,8 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     summary: 'Terminal wrapping fix + popout preview refresh.',
     highlights: [
       'Fixed the terminal occasionally wrapping its output to ~2 characters wide — a hidden or not-yet-laid-out session tab could report a tiny width to the CLI. Terminals now only resize when properly visible.',
-      'Added a refresh button to the detached Notes & Docs preview window (top-right) that reloads the note from disk — handy for picking up external edits, like a Claude session writing to the file.'
+      'Added a refresh button to the detached Notes & Docs preview window (top-right) that reloads the note from disk — handy for picking up external edits, like a Claude session writing to the file.',
+      'Press Ctrl+F in the detached preview to find text — every match is highlighted (the current one in orange) with a match count and Enter / Shift+Enter to step through.'
     ]
   },
   {

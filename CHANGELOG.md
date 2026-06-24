@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 - Refresh button in the detached Notes & Docs preview window (top-right, next to the window controls). Click it to reload the note from disk and re-render — handy for picking up external edits (e.g. a Claude session writing to the `.md`) without switching back to the editor.
+- Find in the detached preview window: press Ctrl+F for a find bar that highlights every match (current match in orange), with a match count and Enter / Shift+Enter (or ↑/↓) to step through. Esc closes it.
 
 ## [0.1.7] - 2026-06-22
 
