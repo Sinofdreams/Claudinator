@@ -82,6 +82,18 @@ function derivePATEnvName(name: string): string {
   return 'PAT_' + name.toUpperCase().replace(/[^A-Z0-9]/g, '_')
 }
 
+// Curated model choices for the picker, newest first. 'sonnet'/'haiku' are
+// aliases (latest in family); Fable 5 / Opus 4.8 pin a specific version.
+// '' means no --model flag (Claude Code's own default).
+const MODEL_PRESETS: { value: string; label: string }[] = [
+  { value: 'claude-fable-5', label: 'Fable 5' },
+  { value: 'claude-opus-4-8', label: 'Opus 4.8' },
+  { value: 'sonnet', label: 'Sonnet' },
+  { value: 'haiku', label: 'Haiku' },
+  { value: '', label: 'Default' }
+]
+const CUSTOM_MODEL = '__custom__'
+
 function formatModelName(model: string): string {
   if (!model) return 'Latest (auto)'
   // Strip trailing date snapshot like -20250428
@@ -103,7 +115,7 @@ export default function SettingsDialog({ onClose }: SettingsDialogProps): JSX.El
   const [activeSection, setActiveSection] = useState<Section>('general')
   const [projectDir, setProjectDir] = useState(store.defaultProjectDir)
   const [notesDir, setNotesDir] = useState(store.notesDir ?? '')
-  const [claudeModel] = useState(store.claudeModel ?? '')
+  const [claudeModel, setClaudeModel] = useState(store.claudeModel ?? '')
   const [localRules, setLocalRules] = useState<string[]>(store.rules ?? [])
   const [localPats, setLocalPats] = useState<LocalPAT[]>(store.pats ?? [])
   const [newRule, setNewRule] = useState('')
@@ -126,6 +138,46 @@ export default function SettingsDialog({ onClose }: SettingsDialogProps): JSX.El
   const [appVersion, setAppVersion] = useState('')
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ state: 'idle' })
 
+  // Claude CLI updater state (About tab)
+  const [cliVersion, setCliVersion] = useState<string | null>(null)
+  const [cliState, setCliState] = useState<'idle' | 'updating' | 'done' | 'error'>('idle')
+  const [cliMessage, setCliMessage] = useState('')
+
+  // Model picker: track whether the user is in "custom raw id" mode. Seeded
+  // from the stored value not matching any preset.
+  const [customModel, setCustomModel] = useState(
+    (store.claudeModel ?? '') !== '' && !MODEL_PRESETS.some((m) => m.value === store.claudeModel)
+  )
+  const [modelOpen, setModelOpen] = useState(false)
+  const modelLabel = customModel
+    ? 'Custom…'
+    : MODEL_PRESETS.find((m) => m.value === claudeModel)?.label ?? formatModelName(claudeModel)
+
+  const handleUpdateCli = async (): Promise<void> => {
+    setCliState('updating')
+    setCliMessage('')
+    try {
+      const res = await window.api.updateCli()
+      if (!res.ok) {
+        setCliState('error')
+        setCliMessage(res.error ?? 'Update failed')
+        return
+      }
+      if (res.to) {
+        setCliVersion(res.to)
+        setCliMessage(`Updated ${res.from ?? ''} → ${res.to}`.trim())
+      } else {
+        setCliMessage("You're on the latest version.")
+        // Refresh the displayed version in case it was unknown before.
+        window.api.getCliVersion?.().then((v) => v?.version && setCliVersion(v.version)).catch(() => {})
+      }
+      setCliState('done')
+    } catch (err) {
+      setCliState('error')
+      setCliMessage((err as Error).message)
+    }
+  }
+
   useEffect(() => {
     if (activeSection !== 'about') return
 
@@ -133,6 +185,7 @@ export default function SettingsDialog({ onClose }: SettingsDialogProps): JSX.El
 
     try {
       window.api.getAppVersion().then(setAppVersion).catch(() => {})
+      window.api.getCliVersion?.().then((v) => setCliVersion(v?.version ?? null)).catch(() => {})
 
       unsub = window.api.onUpdateStatus((data) => {
         switch (data.status) {
@@ -441,6 +494,101 @@ export default function SettingsDialog({ onClose }: SettingsDialogProps): JSX.El
             {activeSection === 'general' && (
               <div>
                 <div style={{ marginBottom: 24 }}>
+                  <label style={labelStyle}>Claude Model</label>
+                  <div style={{ position: 'relative' }}>
+                    <button
+                      type="button"
+                      onClick={() => setModelOpen((o) => !o)}
+                      style={{
+                        ...inputStyle,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                      }}
+                    >
+                      <span>{modelLabel}</span>
+                      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6 }}>
+                        <path d="M4 6l4 4 4-4" />
+                      </svg>
+                    </button>
+                    {modelOpen && (
+                      <>
+                        <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setModelOpen(false)} />
+                        <div
+                          style={{
+                            position: 'absolute',
+                            top: '100%',
+                            left: 0,
+                            right: 0,
+                            marginTop: 6,
+                            zIndex: 50,
+                            borderRadius: 8,
+                            overflow: 'hidden',
+                            maxHeight: 300,
+                            overflowY: 'auto',
+                            backgroundColor: 'var(--bg-elevated)',
+                            border: '1px solid var(--border-primary)',
+                            boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+                          }}
+                        >
+                          {[...MODEL_PRESETS, { value: CUSTOM_MODEL, label: 'Custom…' }].map((m) => {
+                            const active = m.value === CUSTOM_MODEL ? customModel : !customModel && m.value === claudeModel
+                            return (
+                              <button
+                                key={m.value || 'auto'}
+                                type="button"
+                                onClick={() => {
+                                  if (m.value === CUSTOM_MODEL) {
+                                    setCustomModel(true)
+                                  } else {
+                                    setCustomModel(false)
+                                    setClaudeModel(m.value)
+                                  }
+                                  setModelOpen(false)
+                                }}
+                                style={{
+                                  display: 'flex',
+                                  width: '100%',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  textAlign: 'left',
+                                  padding: '9px 14px',
+                                  fontSize: 14,
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                                  backgroundColor: active ? 'var(--bg-active)' : 'transparent',
+                                }}
+                              >
+                                <span>{m.label}</span>
+                                {active && (
+                                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M13 4L6 11 3 8" />
+                                  </svg>
+                                )}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  {customModel && (
+                    <input
+                      value={claudeModel}
+                      onChange={(e) => setClaudeModel(e.target.value)}
+                      placeholder="e.g. claude-fable-5"
+                      style={{ ...inputStyle, marginTop: 8 }}
+                    />
+                  )}
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+                    Passed as <code>--model</code> to every new session. Applies to sessions started after saving — existing terminals keep their model.
+                  </p>
+                </div>
+
+                <div style={{ marginBottom: 24 }}>
                   <label style={labelStyle}>Default Project Directory</label>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <input
@@ -513,6 +661,7 @@ export default function SettingsDialog({ onClose }: SettingsDialogProps): JSX.El
                     Where Notes &amp; Docs markdown files are stored. Point it at a real folder (e.g. a repo) to edit and version them outside the app. Leave blank to use the default app-data location.
                   </p>
                 </div>
+
               </div>
             )}
 
@@ -938,9 +1087,9 @@ export default function SettingsDialog({ onClose }: SettingsDialogProps): JSX.El
             )}
 
             {activeSection === 'about' && (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 16 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 8 }}>
                 {/* Logo + Name */}
-                <svg width="48" height="48" viewBox="0 0 48 48" fill="none" style={{ marginBottom: 12 }}>
+                <svg width="44" height="44" viewBox="0 0 48 48" fill="none" style={{ marginBottom: 8 }}>
                   <rect width="48" height="48" rx="12" fill="var(--accent)" />
                   <path d="M14 16h20v2H14zm0 7h20v2H14zm0 7h14v2H14z" fill="#fff" />
                 </svg>
@@ -955,7 +1104,7 @@ export default function SettingsDialog({ onClose }: SettingsDialogProps): JSX.El
                     display: 'flex',
                     alignItems: 'center',
                     gap: 6,
-                    marginTop: 12,
+                    marginTop: 10,
                     padding: '5px 12px',
                     borderRadius: 8,
                     backgroundColor: 'var(--bg-surface)',
@@ -975,8 +1124,8 @@ export default function SettingsDialog({ onClose }: SettingsDialogProps): JSX.El
                   color: 'var(--text-secondary)',
                   textAlign: 'center',
                   maxWidth: 360,
-                  lineHeight: 1.5,
-                  margin: '16px 0 24px',
+                  lineHeight: 1.45,
+                  margin: '12px 0 16px',
                 }}>
                   A desktop Kanban board for managing parallel Claude Code CLI sessions.
                 </p>
@@ -1088,6 +1237,51 @@ export default function SettingsDialog({ onClose }: SettingsDialogProps): JSX.El
                   )}
                 </div>
 
+                {/* Claude CLI updater */}
+                <div style={{ width: '100%', maxWidth: 320, marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border-primary)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Claude CLI</span>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      {cliVersion ? `v${cliVersion}` : 'not found'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleUpdateCli}
+                    disabled={cliState === 'updating'}
+                    style={{
+                      ...smallBtnStyle,
+                      width: '100%',
+                      justifyContent: 'center',
+                      padding: '10px 16px',
+                      fontSize: 14,
+                      opacity: cliState === 'updating' ? 0.7 : 1,
+                      cursor: cliState === 'updating' ? 'default' : 'pointer',
+                    }}
+                  >
+                    {cliState === 'updating' ? (
+                      <>
+                        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" style={{ animation: 'spin 1s linear infinite' }}>
+                          <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeDasharray="28" strokeDashoffset="8" strokeLinecap="round" />
+                        </svg>
+                        Updating…
+                      </>
+                    ) : (
+                      'Check for CLI Updates'
+                    )}
+                  </button>
+                  {cliMessage && (
+                    <p style={{
+                      fontSize: 12,
+                      color: cliState === 'error' ? '#f87171' : 'var(--text-muted)',
+                      textAlign: 'center',
+                      margin: '10px 0 0',
+                    }}>
+                      {cliMessage}
+                    </p>
+                  )}
+                </div>
+
                 {/* GitHub link */}
                 <a
                   href="#"
@@ -1096,7 +1290,7 @@ export default function SettingsDialog({ onClose }: SettingsDialogProps): JSX.El
                     fontSize: 12,
                     color: 'var(--accent)',
                     textDecoration: 'none',
-                    marginTop: 24,
+                    marginTop: 16,
                     display: 'flex',
                     alignItems: 'center',
                     gap: 6,
