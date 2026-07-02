@@ -67,6 +67,10 @@ export const IPC = {
   UPDATE_INSTALL: 'update:install',
   UPDATE_STATUS: 'update:status',
 
+  // Claude CLI (the `claude` binary the sessions run)
+  CLI_VERSION: 'cli:version',
+  CLI_UPDATE: 'cli:update',
+
   // Detached markdown preview window
   PREVIEW_OPEN: 'preview:open',
   PREVIEW_CLOSE: 'preview:close',

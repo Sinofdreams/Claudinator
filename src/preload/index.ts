@@ -141,6 +141,18 @@ const api = {
     return () => ipcRenderer.removeListener(IPC.UPDATE_STATUS, handler)
   },
 
+  // Claude CLI (the `claude` binary sessions run)
+  getCliVersion: (): Promise<{ version: string | null; error?: string }> =>
+    ipcRenderer.invoke(IPC.CLI_VERSION),
+  updateCli: (): Promise<{
+    ok: boolean
+    from?: string
+    to?: string
+    alreadyLatest: boolean
+    output: string
+    error?: string
+  }> => ipcRenderer.invoke(IPC.CLI_UPDATE),
+
   // Detached markdown preview window
   openPreview: (): Promise<void> => ipcRenderer.invoke(IPC.PREVIEW_OPEN),
   closePreview: (): Promise<void> => ipcRenderer.invoke(IPC.PREVIEW_CLOSE),

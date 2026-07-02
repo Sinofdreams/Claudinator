@@ -4,6 +4,15 @@ All notable changes to Claude Code Orchestrator will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.9] - 2026-07-02
+
+### Added
+- Model picker in Settings → General. Choose which model every new session launches with — Fable 5, Opus 4.8, Sonnet, Haiku, Default (no `--model` flag), or a Custom raw model id. The choice is passed as `--model` to each new session (existing terminals keep their model).
+- "Check for CLI Updates" in Settings → About. Shows the installed Claude Code CLI version and runs `claude update` in place, reporting whether it updated or you're already on the latest.
+
+### Fixed
+- The in-app CLI updater now strips the `npm_config_*` environment variables that a `npm run dev` launch would otherwise leak into the `claude update` child process (which made its internal npm call fail with "registry unreachable").
+
 ## [0.1.8] - 2026-06-23
 
 ### Fixed

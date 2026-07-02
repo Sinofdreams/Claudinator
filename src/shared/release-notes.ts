@@ -10,6 +10,15 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '0.1.9',
+    date: '2026-07-02',
+    summary: 'Pick your model, and keep the CLI up to date.',
+    highlights: [
+      'New model picker in Settings → General — choose which Claude model every new session launches with (Fable 5, Opus 4.8, Sonnet, Haiku, or a custom id). Handy for switching off Fable 5 before it sunsets.',
+      'Check for CLI updates from Settings → About — see the installed Claude Code CLI version and update it in place, without dropping to a terminal.'
+    ]
+  },
+  {
     version: '0.1.8',
     date: '2026-06-23',
     summary: 'Terminal wrapping fix + popout preview refresh.',
