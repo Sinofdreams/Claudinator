@@ -4,6 +4,20 @@ All notable changes to Claude Code Orchestrator will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.12] - 2026-07-07
+
+### Added
+- Native Windows notifications when a session needs attention: a toast when Claude hits a decision prompt (permission / plan / menu) or finishes and waits for your prompt, titled with the card name. Clicking the toast focuses the app and opens that session. Suppressed while you're viewing the session; per-session cooldown prevents spam. Two independent toggles in Settings → General (both default on).
+- Estimated conversation cost per card: board cards show the cost in their footer and the session view gets a cost badge next to the context badge. Priced per model family at current list rates (including cache reads/writes) from the card's transcript, cached by file mtime so polling stays cheap. Note this is the API list-price equivalent — a measure of heaviness, not your subscription bill.
+
+### Fixed
+- Usage stats (dashboard and the new cost display) no longer over-count by ~2.5x. Claude Code writes one transcript line per content block and repeats the same usage object on each line of a response; usage is now counted once per API request.
+- Model pricing table refreshed: Opus 4.6+ at current $5/$25 rates (was using pre-4.6 $15/$75), Haiku 4.5 at $1/$5, and Fable/Mythos ($10/$50) is now its own family in the by-model breakdown instead of being priced as Sonnet.
+
+### Changed
+- Session-start errors show as in-app toasts (bottom-right, auto-dismiss) instead of blocking alert() popups.
+- Removed dead code: the unused TerminalPanel/TerminalTab/SessionHeader components.
+
 ## [0.1.11] - 2026-07-07
 
 ### Added

@@ -10,6 +10,17 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '0.1.12',
+    date: '2026-07-07',
+    summary: 'Get pinged when Claude needs you, and see what each card costs.',
+    highlights: [
+      'Windows notifications when a session needs a decision or finishes while you’re elsewhere — click the toast to jump straight to that session. Toggles in Settings → General.',
+      'Cards now show the estimated cost of their conversation (API list-price equivalent), with a live cost badge in the session view.',
+      'Usage stats are now accurate: token and cost totals were over-counted ~2.5x and model pricing was stale — both fixed, so expect dashboard numbers to drop.',
+      'Errors show as in-app toasts instead of blocking popups.'
+    ]
+  },
+  {
     version: '0.1.11',
     date: '2026-07-07',
     summary: 'Run each card in its own git worktree.',
