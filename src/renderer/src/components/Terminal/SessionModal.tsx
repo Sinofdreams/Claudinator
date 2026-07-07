@@ -9,9 +9,12 @@ import { useTitleBarDim } from '@/hooks/useTitleBarDim'
 
 interface SessionModalProps {
   sessionId: string
+  /** When false the modal stays mounted but hidden, so its terminals keep
+   *  their scrollback. Side effects (polling, Escape, title-bar dim) pause. */
+  visible?: boolean
 }
 
-export default function SessionModal({ sessionId }: SessionModalProps): JSX.Element {
+export default function SessionModal({ sessionId, visible = true }: SessionModalProps): JSX.Element {
   const session = useSessionStore((s) => s.sessions[sessionId])
   const sessions = useSessionStore((s) => s.sessions)
   const openTabs = useSessionStore((s) => s.openTabs)
@@ -31,7 +34,7 @@ export default function SessionModal({ sessionId }: SessionModalProps): JSX.Elem
 
   const hasProjectDir = Boolean(card?.projectDir)
 
-  useTitleBarDim()
+  useTitleBarDim(visible)
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -78,10 +81,11 @@ export default function SessionModal({ sessionId }: SessionModalProps): JSX.Elem
   }, [card?.projectDir])
 
   useEffect(() => {
+    if (!visible) return
     fetchBranch()
     const interval = setInterval(fetchBranch, 10000)
     return () => clearInterval(interval)
-  }, [fetchBranch])
+  }, [fetchBranch, visible])
 
   const fetchContextInfo = useCallback(async () => {
     try {
@@ -93,13 +97,15 @@ export default function SessionModal({ sessionId }: SessionModalProps): JSX.Elem
   }, [sessionId])
 
   useEffect(() => {
+    if (!visible) return
     fetchContextInfo()
     const interval = setInterval(fetchContextInfo, 5000)
     return () => clearInterval(interval)
-  }, [fetchContextInfo])
+  }, [fetchContextInfo, visible])
 
   // Close on Escape
   useEffect(() => {
+    if (!visible) return
     const handleKeyDown = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
         setViewingSession(null)
@@ -107,10 +113,13 @@ export default function SessionModal({ sessionId }: SessionModalProps): JSX.Elem
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [setViewingSession])
+  }, [setViewingSession, visible])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ display: visible ? undefined : 'none' }}
+    >
       {/* Backdrop */}
       <div
         className="absolute inset-0 backdrop-blur-sm"
@@ -269,7 +278,7 @@ export default function SessionModal({ sessionId }: SessionModalProps): JSX.Elem
                 >
                   <TerminalView
                     sessionId={tabId}
-                    isVisible={tabId === sessionId}
+                    isVisible={visible && tabId === sessionId}
                   />
                 </div>
               ))}

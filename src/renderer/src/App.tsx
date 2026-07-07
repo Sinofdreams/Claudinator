@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useBoardStore } from './stores/board-store'
 import { useSessionStore } from './stores/session-store'
 import { useSettingsStore } from './stores/settings-store'
@@ -17,12 +17,24 @@ export default function App(): JSX.Element {
   const load = useBoardStore((s) => s.load)
   const initListeners = useSessionStore((s) => s.initListeners)
   const viewingSessionId = useSessionStore((s) => s.viewingSessionId)
+  const openTabs = useSessionStore((s) => s.openTabs)
   const currentView = useSessionStore((s) => s.currentView)
   const newCardDialogOpen = useBoardStore((s) => s.newCardDialogOpen)
   const closeNewCardDialog = useBoardStore((s) => s.closeNewCardDialog)
   const addCard = useBoardStore((s) => s.addCard)
   const updateCard = useBoardStore((s) => s.updateCard)
   const whatsNewOpen = useUIStore((s) => s.whatsNewOpen)
+
+  // Disposing an xterm throws away its scrollback, and rebuilding it from the
+  // main process's raw 1MB PTY ring buffer loses most of the visible history
+  // (Claude Code's TUI redraws churn through it fast). So once a session has
+  // been viewed, keep the modal mounted but hidden while any tab is still open —
+  // the live terminals retain their full scrollback across close/reopen.
+  const lastViewedSessionRef = useRef<string | null>(null)
+  if (viewingSessionId) lastViewedSessionRef.current = viewingSessionId
+  const modalSessionId = viewingSessionId ?? lastViewedSessionRef.current
+  const modalMounted = modalSessionId !== null && (viewingSessionId !== null || openTabs.length > 0)
+
   useEffect(() => {
     load()
     useSettingsStore.getState().load()
@@ -67,8 +79,11 @@ export default function App(): JSX.Element {
         {currentView === 'dashboard' && <DashboardPanel />}
       </div>
 
-      {/* Session modal overlay */}
-      {viewingSessionId && <SessionModal sessionId={viewingSessionId} />}
+      {/* Session modal overlay — kept mounted (hidden) after close so the
+          terminals keep their scrollback */}
+      {modalMounted && (
+        <SessionModal sessionId={modalSessionId} visible={viewingSessionId !== null} />
+      )}
 
       {/* What's New popup (shown after an update, or from About) */}
       {whatsNewOpen && <WhatsNewModal />}
