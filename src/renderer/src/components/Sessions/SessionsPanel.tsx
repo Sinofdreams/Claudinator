@@ -55,7 +55,8 @@ export default function SessionsPanel(): JSX.Element {
       openTab(card.sessionId)
     } else {
       try {
-        const info = await startSession(card.id, card.title, card.projectDir, card.claudeSessionId)
+        const dir = card.worktreePath || card.projectDir
+        const info = await startSession(card.id, card.title, dir, card.claudeSessionId)
         updateCard(card.id, { sessionId: info.id })
       } catch (err) {
         alert(err instanceof Error ? err.message : 'Failed to start session')

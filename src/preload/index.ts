@@ -1,6 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '@shared/ipc-channels'
-import { BoardState, SessionInfo, ThemeOverrides, CustomTheme, NotesTree } from '@shared/models'
+import {
+  BoardState,
+  SessionInfo,
+  ThemeOverrides,
+  CustomTheme,
+  NotesTree,
+  GitBranchesResult
+} from '@shared/models'
 import type { StatsSummary } from '@shared/stats'
 
 const api = {
@@ -48,6 +55,20 @@ const api = {
 
   getGitDiff: (projectDir: string, filePath: string): Promise<string> =>
     ipcRenderer.invoke(IPC.GIT_DIFF, projectDir, filePath),
+
+  getGitBranches: (projectDir: string, sessionId?: string): Promise<GitBranchesResult> =>
+    ipcRenderer.invoke(IPC.GIT_BRANCHES, projectDir, sessionId),
+
+  addWorktree: (
+    projectDir: string,
+    branch: string,
+    baseRef: string,
+    createBranch: boolean
+  ): Promise<{ path: string; branch: string }> =>
+    ipcRenderer.invoke(IPC.GIT_WORKTREE_ADD, projectDir, branch, baseRef, createBranch),
+
+  removeWorktree: (projectDir: string, worktreePath: string, force?: boolean): Promise<void> =>
+    ipcRenderer.invoke(IPC.GIT_WORKTREE_REMOVE, projectDir, worktreePath, force),
 
   // Stats
   getTodayStats: (): Promise<{

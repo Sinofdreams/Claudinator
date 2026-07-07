@@ -1,6 +1,8 @@
 import { ipcMain } from 'electron'
 import { execFile } from 'child_process'
+import { join, dirname, basename, resolve, normalize } from 'path'
 import { IPC } from '@shared/ipc-channels'
+import type { GitBranchesResult, GitWorktreeInfo } from '@shared/models'
 import { sessionManager } from '../services/session-manager'
 
 function runGit(args: string[], cwd: string): Promise<string> {
@@ -53,6 +55,41 @@ async function resolveGitRoot(projectDir: string, sessionId?: string): Promise<s
   if (root) return root
 
   throw new Error('Not a git repository')
+}
+
+/**
+ * Parse `git worktree list --porcelain` output. The first entry is always the
+ * main worktree (the primary checkout the others were created from).
+ */
+function parseWorktrees(porcelain: string): GitWorktreeInfo[] {
+  const worktrees: GitWorktreeInfo[] = []
+  for (const block of porcelain.split(/\r?\n\r?\n/)) {
+    const lines = block.split(/\r?\n/).filter((l) => l.length > 0)
+    if (lines.length === 0) continue
+    let path: string | null = null
+    let branch: string | null = null
+    for (const line of lines) {
+      if (line.startsWith('worktree ')) path = line.slice('worktree '.length)
+      else if (line.startsWith('branch ')) branch = line.slice('branch '.length).replace(/^refs\/heads\//, '')
+    }
+    // git emits forward slashes even on Windows — normalize so renderer-side
+    // equality checks against paths we built with path.join actually match
+    if (path) worktrees.push({ path: normalize(path), branch, isMain: worktrees.length === 0 })
+  }
+  return worktrees
+}
+
+/**
+ * Resolve the MAIN worktree root for a repo, even when `dir` is inside a
+ * linked worktree — worktree management always operates from the primary
+ * checkout so listings and default paths stay consistent.
+ */
+async function findMainRoot(dir: string): Promise<string> {
+  const anyRoot = await findGitRoot(dir)
+  if (!anyRoot) throw new Error('Not a git repository')
+  const porcelain = await runGit(['worktree', 'list', '--porcelain'], anyRoot)
+  const main = parseWorktrees(porcelain).find((w) => w.isMain)
+  return main?.path ?? anyRoot
 }
 
 export function registerGitIpc(): void {
@@ -137,6 +174,78 @@ export function registerGitIpc(): void {
       } catch {
         return ''
       }
+    }
+  )
+
+  ipcMain.handle(
+    IPC.GIT_BRANCHES,
+    async (_event, projectDir: string, sessionId?: string): Promise<GitBranchesResult> => {
+      // Resolve from the session's live CWD when possible, then walk up to the
+      // main worktree so the listing is identical no matter where we ask from.
+      let startDir = projectDir
+      if (sessionId) {
+        const cwd = sessionManager.getCwd(sessionId)
+        if (cwd) startDir = cwd
+      }
+      const root = await findMainRoot(startDir)
+
+      const [branchOut, worktreeOut, currentOut] = await Promise.all([
+        runGit(['branch', '--list', '--format=%(refname:short)\t%(worktreepath)'], root),
+        runGit(['worktree', 'list', '--porcelain'], root),
+        runGit(['branch', '--show-current'], root)
+      ])
+
+      const branches = branchOut
+        .split('\n')
+        .map((l) => l.trimEnd())
+        .filter((l) => l.length > 0)
+        .map((line) => {
+          const [name, worktreePath] = line.split('\t')
+          return { name, worktreePath: worktreePath ? normalize(worktreePath) : null }
+        })
+
+      return {
+        root,
+        currentBranch: currentOut.trim(),
+        branches,
+        worktrees: parseWorktrees(worktreeOut)
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IPC.GIT_WORKTREE_ADD,
+    async (
+      _event,
+      projectDir: string,
+      branch: string,
+      baseRef: string,
+      createBranch: boolean
+    ): Promise<{ path: string; branch: string }> => {
+      const root = await findMainRoot(projectDir)
+
+      // Sibling folder next to the repo, so the worktree never sits inside the
+      // main checkout: <parent>/<repo>-worktrees/<branch-slug>
+      const slug = branch.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'worktree'
+      const worktreePath = join(dirname(root), `${basename(root)}-worktrees`, slug)
+
+      const args = createBranch
+        ? ['worktree', 'add', worktreePath, '-b', branch, baseRef]
+        : ['worktree', 'add', worktreePath, branch]
+      await runGit(args, root)
+
+      return { path: resolve(worktreePath), branch }
+    }
+  )
+
+  ipcMain.handle(
+    IPC.GIT_WORKTREE_REMOVE,
+    async (_event, projectDir: string, worktreePath: string, force?: boolean): Promise<void> => {
+      const root = await findMainRoot(projectDir)
+      const args = ['worktree', 'remove']
+      if (force) args.push('--force')
+      args.push(worktreePath)
+      await runGit(args, root)
     }
   )
 }

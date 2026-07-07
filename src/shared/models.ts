@@ -12,6 +12,30 @@ export interface Card {
   tags: string[]
   createdAt: number
   updatedAt: number
+  /** When set, sessions for this card run inside this git worktree instead of projectDir. */
+  worktreePath?: string | null
+  /** Branch checked out in the card's worktree (display only). */
+  worktreeBranch?: string | null
+}
+
+export interface GitBranchInfo {
+  name: string
+  /** Absolute path of the worktree this branch is checked out in, if any. */
+  worktreePath: string | null
+}
+
+export interface GitWorktreeInfo {
+  path: string
+  branch: string | null // null when detached
+  isMain: boolean
+}
+
+export interface GitBranchesResult {
+  /** Path of the main (primary) worktree — the repo root. */
+  root: string
+  currentBranch: string
+  branches: GitBranchInfo[]
+  worktrees: GitWorktreeInfo[]
 }
 
 export interface Column {

@@ -6,7 +6,7 @@ interface BoardActions {
   load: () => Promise<void>
   save: () => Promise<void>
   addCard: (title: string, description: string, projectDir: string, columnId?: ColumnId) => Card
-  updateCard: (id: string, updates: Partial<Pick<Card, 'title' | 'description' | 'projectDir' | 'sessionId' | 'claudeSessionId' | 'tags'>>) => void
+  updateCard: (id: string, updates: Partial<Pick<Card, 'title' | 'description' | 'projectDir' | 'sessionId' | 'claudeSessionId' | 'tags' | 'worktreePath' | 'worktreeBranch'>>) => void
   deleteCard: (id: string) => void
   moveCard: (cardId: string, toColumnId: ColumnId, toIndex: number) => void
   reorderCards: (columnId: ColumnId, cardIds: string[]) => void

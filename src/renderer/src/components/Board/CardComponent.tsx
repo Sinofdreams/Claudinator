@@ -233,23 +233,36 @@ export function CardContent({
         </div>
       )}
 
-      {/* Footer — session ID + timestamp */}
+      {/* Footer — worktree badge + timestamp */}
       <div
         style={{
           marginTop: 12,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'flex-end',
           gap: 5,
           fontSize: 11,
           color: 'var(--text-muted)',
         }}
       >
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2">
-          <rect x="1.5" y="2" width="9" height="7" rx="1.5" />
-          <path d="M1.5 4.5h9" />
-        </svg>
-        <span>{relativeTime(card.updatedAt)}</span>
+        {card.worktreePath && (
+          <div
+            className="flex items-center min-w-0"
+            style={{ gap: 4, color: 'var(--text-faint)' }}
+            title={`Runs in worktree: ${card.worktreePath}`}
+          >
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" className="shrink-0">
+              <path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z" />
+            </svg>
+            <span className="truncate" style={{ fontSize: 10 }}>{card.worktreeBranch ?? 'worktree'}</span>
+          </div>
+        )}
+        <div className="flex items-center" style={{ gap: 5, marginLeft: 'auto' }}>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2">
+            <rect x="1.5" y="2" width="9" height="7" rx="1.5" />
+            <path d="M1.5 4.5h9" />
+          </svg>
+          <span>{relativeTime(card.updatedAt)}</span>
+        </div>
       </div>
     </div>
   )
@@ -290,7 +303,8 @@ export default function CardComponent({ card, onEdit }: CardComponentProps): JSX
       openTab(card.sessionId)
     } else {
       try {
-        const info = await startSession(card.id, card.title, card.projectDir, card.claudeSessionId)
+        const dir = card.worktreePath || card.projectDir
+        const info = await startSession(card.id, card.title, dir, card.claudeSessionId)
         updateCard(card.id, { sessionId: info.id })
       } catch (err) {
         alert(err instanceof Error ? err.message : 'Failed to start session')

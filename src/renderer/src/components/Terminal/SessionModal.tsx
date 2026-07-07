@@ -3,6 +3,7 @@ import { useSessionStore } from '@/stores/session-store'
 import { useBoardStore } from '@/stores/board-store'
 import TerminalView from './TerminalView'
 import GitPanel from './GitPanel'
+import WorktreeMenu from './WorktreeMenu'
 import { getTagColor } from '@/utils/tag-colors'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useTitleBarDim } from '@/hooks/useTitleBarDim'
@@ -33,6 +34,8 @@ export default function SessionModal({ sessionId, visible = true }: SessionModal
   const isResizing = useRef(false)
 
   const hasProjectDir = Boolean(card?.projectDir)
+  // Where this card's session actually runs — its worktree when one is bound.
+  const effectiveDir = card?.worktreePath || card?.projectDir
 
   useTitleBarDim(visible)
 
@@ -71,14 +74,14 @@ export default function SessionModal({ sessionId, visible = true }: SessionModal
   }, [card, updateCard])
 
   const fetchBranch = useCallback(async () => {
-    if (!card?.projectDir) return
+    if (!effectiveDir) return
     try {
-      const result = await window.api.getGitStatus(card.projectDir, sessionId)
+      const result = await window.api.getGitStatus(effectiveDir, sessionId)
       setBranchName(result.branch)
     } catch {
       setBranchName(null)
     }
-  }, [card?.projectDir])
+  }, [effectiveDir, sessionId])
 
   useEffect(() => {
     if (!visible) return
@@ -190,13 +193,13 @@ export default function SessionModal({ sessionId, visible = true }: SessionModal
                 className="shrink-0 flex items-center"
                 style={{ gap: '16px', padding: '10px 24px', borderBottom: '1px solid var(--border-subtle)', backgroundColor: 'var(--bg-primary)' }}
               >
-                {branchName ? (
-                  <div className="flex items-center" style={{ gap: '8px' }}>
-                    <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" className="shrink-0" style={{ color: 'var(--text-secondary)' }}>
-                      <path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z" />
-                    </svg>
-                    <span className="text-xs font-bold" style={{ color: 'var(--text-secondary)' }}>{branchName}</span>
-                  </div>
+                {card && hasProjectDir ? (
+                  <WorktreeMenu
+                    card={card}
+                    sessionId={sessionId}
+                    branchName={branchName}
+                    onSwitched={fetchBranch}
+                  />
                 ) : (
                   <div className="flex items-center" style={{ gap: '8px' }}>
                     <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" className="shrink-0" style={{ color: 'var(--text-faint)' }}>
@@ -208,12 +211,12 @@ export default function SessionModal({ sessionId, visible = true }: SessionModal
 
                 <div style={{ width: '1px', height: '14px', backgroundColor: 'var(--border-primary)' }} />
 
-                {card?.projectDir ? (
-                  <div className="flex items-center min-w-0" style={{ gap: '8px' }} title={card.projectDir}>
+                {effectiveDir ? (
+                  <div className="flex items-center min-w-0" style={{ gap: '8px' }} title={effectiveDir}>
                     <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" className="shrink-0" style={{ color: 'var(--text-muted)' }} strokeLinecap="round" strokeLinejoin="round">
                       <path d="M2 4.5V12a1.5 1.5 0 001.5 1.5h9A1.5 1.5 0 0014 12V6.5A1.5 1.5 0 0012.5 5H8L6.5 3H3.5A1.5 1.5 0 002 4.5z" />
                     </svg>
-                    <span className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{card.projectDir}</span>
+                    <span className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{effectiveDir}</span>
                     <button
                       onClick={handleChangeProjectDir}
                       className="flex items-center justify-center rounded transition-colors cursor-pointer shrink-0"
@@ -298,7 +301,7 @@ export default function SessionModal({ sessionId, visible = true }: SessionModal
                 }}
               />
               <div className="shrink-0 overflow-hidden" style={{ width: gitPanelWidth }}>
-                <GitPanel projectDir={card?.projectDir || null} sessionId={sessionId} />
+                <GitPanel projectDir={effectiveDir || null} sessionId={sessionId} />
               </div>
             </>
           )}
