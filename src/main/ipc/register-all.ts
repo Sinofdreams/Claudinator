@@ -8,6 +8,7 @@ import { registerUpdateIpc } from './update-ipc'
 import { registerCliIpc } from './cli-ipc'
 import { registerNotesIpc } from './notes-ipc'
 import { registerPreviewIpc } from './preview-ipc'
+import { registerNotifyIpc } from './notify-ipc'
 
 export function registerAllIpc(): void {
   registerBoardIpc()
@@ -20,4 +21,5 @@ export function registerAllIpc(): void {
   registerCliIpc()
   registerNotesIpc()
   registerPreviewIpc()
+  registerNotifyIpc()
 }

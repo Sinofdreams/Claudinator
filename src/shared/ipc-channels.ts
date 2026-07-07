@@ -65,6 +65,8 @@ export const IPC = {
 
   // App / Update
   APP_VERSION: 'app:version',
+  APP_NOTIFY: 'app:notify',
+  APP_NOTIFY_CLICK: 'app:notify-click',
   UPDATE_CHECK: 'update:check',
   UPDATE_DOWNLOAD: 'update:download',
   UPDATE_INSTALL: 'update:install',

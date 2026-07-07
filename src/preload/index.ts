@@ -146,6 +146,15 @@ const api = {
 
   // App / Update
   getAppVersion: (): Promise<string> => ipcRenderer.invoke(IPC.APP_VERSION),
+  notify: (args: { title: string; body: string; sessionId: string }): Promise<void> =>
+    ipcRenderer.invoke(IPC.APP_NOTIFY, args),
+  onNotificationClick: (callback: (sessionId: string) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, sessionId: string): void => {
+      callback(sessionId)
+    }
+    ipcRenderer.on(IPC.APP_NOTIFY_CLICK, handler)
+    return () => ipcRenderer.removeListener(IPC.APP_NOTIFY_CLICK, handler)
+  },
   checkForUpdate: (): Promise<unknown> => ipcRenderer.invoke(IPC.UPDATE_CHECK),
   downloadUpdate: (): Promise<unknown> => ipcRenderer.invoke(IPC.UPDATE_DOWNLOAD),
   installUpdate: (): Promise<void> => ipcRenderer.invoke(IPC.UPDATE_INSTALL),

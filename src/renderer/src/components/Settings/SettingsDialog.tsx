@@ -124,6 +124,9 @@ export default function SettingsDialog({ onClose }: SettingsDialogProps): JSX.El
   const [revealedPats, setRevealedPats] = useState<Set<string>>(new Set())
   const [patError, setPatError] = useState('')
   const [importMsg, setImportMsg] = useState<{ text: string; type: 'success' | 'warn' | 'error' } | null>(null)
+  // Notification prefs live in localStorage (read at notify time), default on.
+  const [notifyDecision, setNotifyDecision] = useState(localStorage.getItem('notify-decision') !== 'off')
+  const [notifyWaiting, setNotifyWaiting] = useState(localStorage.getItem('notify-waiting') !== 'off')
   const [initialTheme] = useState(store.theme)
   const [initialActiveCustomId] = useState(store.activeCustomThemeId)
   const [initialOverrides] = useState<ThemeOverrides>(() => JSON.parse(JSON.stringify(store.themeOverrides)))
@@ -659,6 +662,38 @@ export default function SettingsDialog({ onClose }: SettingsDialogProps): JSX.El
                   </div>
                   <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
                     Where Notes &amp; Docs markdown files are stored. Point it at a real folder (e.g. a repo) to edit and version them outside the app. Leave blank to use the default app-data location.
+                  </p>
+                </div>
+
+                <div style={{ marginBottom: 24 }}>
+                  <label style={labelStyle}>Notifications</label>
+                  {(
+                    [
+                      { key: 'notify-decision', state: notifyDecision, setState: setNotifyDecision, label: 'When a session needs a decision', hint: 'Permission prompts, plan approvals, menu choices.' },
+                      { key: 'notify-waiting', state: notifyWaiting, setState: setNotifyWaiting, label: 'When a session finishes', hint: 'Claude is done and waiting for your next prompt.' }
+                    ] as const
+                  ).map((t) => (
+                    <label
+                      key={t.key}
+                      style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0', cursor: 'pointer' }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={t.state}
+                        onChange={(e) => {
+                          t.setState(e.target.checked)
+                          localStorage.setItem(t.key, e.target.checked ? 'on' : 'off')
+                        }}
+                        style={{ marginTop: 2, accentColor: 'var(--text-primary)', cursor: 'pointer' }}
+                      />
+                      <span>
+                        <span style={{ display: 'block', fontSize: 13, color: 'var(--text-primary)' }}>{t.label}</span>
+                        <span style={{ display: 'block', fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{t.hint}</span>
+                      </span>
+                    </label>
+                  ))}
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+                    Native Windows toasts. Suppressed while you're viewing that session; clicking one opens it.
                   </p>
                 </div>
 

@@ -137,6 +137,40 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     // "finished, waiting for a prompt" from "waiting for a decision".
     const buffers = new Map<string, string>()
 
+    // Native OS notification when a session flips to an attention state.
+    // Prefs live in localStorage (default on, same pattern as the dashboard);
+    // a per-session cooldown keeps prompt-redraw flapping from spamming toasts.
+    const lastNotified = new Map<string, number>()
+    const NOTIFY_COOLDOWN_MS = 20000
+
+    const sessionTitle = (session: SessionInfo): string => {
+      if (session.cardId.startsWith('notes:')) return session.cardId.slice('notes:'.length)
+      return useBoardStore.getState().cards[session.cardId]?.title ?? 'Session'
+    }
+
+    const maybeNotify = (sessionId: string, from: SessionStatus, to: SessionStatus): void => {
+      if (to !== 'decision' && to !== 'waiting') return
+      // Only ping on the transition out of active work — re-renders of an
+      // already-flagged prompt shouldn't fire again.
+      if (from !== 'running' && from !== 'starting') return
+      if (localStorage.getItem(to === 'decision' ? 'notify-decision' : 'notify-waiting') === 'off') return
+      // Don't ping when the user is already looking at this session.
+      if (document.hasFocus() && get().viewingSessionId === sessionId) return
+      const now = Date.now()
+      if (now - (lastNotified.get(sessionId) ?? 0) < NOTIFY_COOLDOWN_MS) return
+      lastNotified.set(sessionId, now)
+      const session = get().sessions[sessionId]
+      if (!session) return
+      window.api.notify({
+        title: sessionTitle(session),
+        body:
+          to === 'decision'
+            ? 'Claude is waiting for a decision'
+            : 'Claude has finished — waiting for your prompt',
+        sessionId
+      })
+    }
+
     // Claude Code draws interactive prompts with Ink, which wraps text in lots
     // of ANSI escape codes — so we strip those before matching, otherwise the
     // footer words get split up and literal substrings never match.
@@ -177,7 +211,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
           clearTimeout(existing)
           idleTimers.delete(sessionId)
         }
-        if (session.status !== 'decision') get().updateSessionStatus(sessionId, 'decision')
+        if (session.status !== 'decision') {
+          maybeNotify(sessionId, session.status, 'decision')
+          get().updateSessionStatus(sessionId, 'decision')
+        }
         return
       }
 
@@ -194,7 +231,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         if (!s || s.status === 'stopped') return
         const tail = (buffers.get(sessionId) ?? '').slice(-3000)
         const next = isDecisionPrompt(tail) ? 'decision' : 'waiting'
-        if (s.status !== next) get().updateSessionStatus(sessionId, next)
+        if (s.status !== next) {
+          maybeNotify(sessionId, s.status, next)
+          get().updateSessionStatus(sessionId, next)
+        }
       }, 3000))
     })
 
@@ -203,7 +243,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       if (timer) clearTimeout(timer)
       idleTimers.delete(sessionId)
       buffers.delete(sessionId)
+      lastNotified.delete(sessionId)
       get().updateSessionStatus(sessionId, 'stopped')
+    })
+
+    // Clicking a notification focuses the app (handled in main) and opens the
+    // session it came from.
+    const unsubNotifyClick = window.api.onNotificationClick((sessionId) => {
+      if (get().sessions[sessionId]) get().openTab(sessionId)
     })
 
     const unsubClaudeId = window.api.onClaudeSessionId((sessionId, claudeConversationId) => {
@@ -231,6 +278,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       unsubData()
       unsubExit()
       unsubClaudeId()
+      unsubNotifyClick()
       for (const timer of idleTimers.values()) clearTimeout(timer)
       idleTimers.clear()
     }

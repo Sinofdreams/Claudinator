@@ -90,6 +90,11 @@ async function createWindow(): Promise<void> {
   }
 }
 
+// Windows ties toast notifications to an App User Model ID; without this,
+// notifications are attributed to "electron.app.Electron" (or dropped). Must
+// match the electron-builder appId so packaged shortcuts resolve to it.
+app.setAppUserModelId('com.claude-orchestrator.app')
+
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null)
   registerAllIpc()
