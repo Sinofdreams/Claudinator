@@ -129,6 +129,7 @@ export default function GitPanel({ projectDir, sessionId }: GitPanelProps): JSX.
   }, [fetchStatus])
 
   const handleFileClick = async (filePath: string): Promise<void> => {
+    if (!projectDir) return
     if (expandedFile === filePath) {
       setExpandedFile(null)
       return

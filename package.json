@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "preview": "electron-vite preview",
     "postinstall": "node scripts/patch-node-pty.js && electron-builder install-app-deps",
     "rebuild": "node scripts/patch-node-pty.js && electron-builder install-app-deps",
