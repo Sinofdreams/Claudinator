@@ -4,6 +4,14 @@ All notable changes to Claude Code Orchestrator will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.11] - 2026-07-07
+
+### Added
+- Git worktree support from the session view. The branch indicator is now a dropdown: create a worktree on a new branch (pre-named from the card title), open any existing branch as a worktree, switch between worktrees, or return to the main checkout. Worktrees are created next to the repo (`<repo>-worktrees/<branch>`), the card remembers its worktree across restarts, the git panel and paths follow it, and worktree-bound cards show a branch badge on the board. Two cards on the same repo can now run sessions in parallel without fighting over the working tree. Note: switching restarts the session with a fresh Claude conversation, and new worktrees don't share dependencies (`node_modules`).
+
+### Fixed
+- The card's Claude conversation id (used for resume and the context-usage badge) now tracks the session for its whole lifetime. Previously it was detected once and never updated, so a `/clear` or `/new` inside the CLI would leave the card resuming — and the badge reading — a dead conversation.
+
 ## [0.1.10] - 2026-07-07
 
 ### Fixed

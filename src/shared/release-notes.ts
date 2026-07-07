@@ -10,6 +10,16 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '0.1.11',
+    date: '2026-07-07',
+    summary: 'Run each card in its own git worktree.',
+    highlights: [
+      'The branch chip in the session view is now a dropdown — create a worktree on a new branch, open an existing branch as one, switch between worktrees, or hop back to the main checkout. Cards on the same repo can finally run sessions side by side without stepping on each other.',
+      'Worktree-bound cards show a branch badge on the board, and the git panel follows whichever checkout the session runs in.',
+      'The card’s conversation id now follows /clear and /new, so resume and the context badge never point at a dead conversation.'
+    ]
+  },
+  {
     version: '0.1.10',
     date: '2026-07-07',
     summary: 'Terminal history survives closing a session.',
