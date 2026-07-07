@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Card, GitBranchesResult } from '@shared/models'
 import { useBoardStore } from '@/stores/board-store'
 import { useSessionStore } from '@/stores/session-store'
+import { useUIStore } from '@/stores/ui-store'
 
 interface WorktreeMenuProps {
   card: Card
@@ -43,8 +44,10 @@ export default function WorktreeMenu({ card, sessionId, branchName, onSwitched }
   const [data, setData] = useState<GitBranchesResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [busyText, setBusyText] = useState<string | null>(null)
   const [newBranch, setNewBranch] = useState('')
   const [baseRef, setBaseRef] = useState('')
+  const [installDeps, setInstallDeps] = useState(false)
   const [removeError, setRemoveError] = useState<{ path: string; message: string } | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
 
@@ -131,15 +134,94 @@ export default function WorktreeMenu({ card, sessionId, branchName, onSwitched }
     const branch = newBranch.trim()
     if (!branch || !baseRef) return
     setBusy(true)
+    setBusyText(installDeps ? 'Creating + installing deps…' : null)
     setError(null)
     try {
-      const { path } = await window.api.addWorktree(card.projectDir, branch, baseRef, true)
+      const { path, installError } = await window.api.addWorktree(
+        card.projectDir,
+        branch,
+        baseRef,
+        true,
+        installDeps
+      )
+      if (installError) useUIStore.getState().showToast(installError)
       await switchTo(path, branch)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to create worktree')
       setBusy(false)
+    } finally {
+      setBusyText(null)
     }
-  }, [newBranch, baseRef, card.projectDir, switchTo])
+  }, [newBranch, baseRef, installDeps, card.projectDir, switchTo])
+
+  /**
+   * Merge the worktree branch back into the main checkout's branch, then clean
+   * up the worktree + branch and return the card to the main repo. Dirty-tree
+   * preflight runs BEFORE the session is stopped, so the common refusal case
+   * doesn't cost the terminal; the IPC re-checks authoritatively.
+   */
+  const handleMergeBack = useCallback(async (): Promise<void> => {
+    const worktreePath = card.worktreePath
+    const branch = card.worktreeBranch
+    if (!worktreePath || !branch) return
+    setBusy(true)
+    setBusyText('Merging…')
+    setError(null)
+    try {
+      const [wtStatus, mainStatus] = await Promise.all([
+        window.api.getGitStatus(worktreePath),
+        window.api.getGitStatus(card.projectDir)
+      ])
+      if (wtStatus.files.length > 0) {
+        setError('The worktree has uncommitted changes — commit or stash them first.')
+        return
+      }
+      if (mainStatus.files.length > 0) {
+        setError('The main checkout has uncommitted changes — commit or stash them first.')
+        return
+      }
+
+      // Stop the session so nothing holds the worktree directory during removal.
+      if (card.sessionId) {
+        await stopSession(card.sessionId)
+        closeTab(card.sessionId)
+      }
+
+      const { mergedInto, warning } = await window.api.mergeBackWorktree(
+        card.projectDir,
+        worktreePath,
+        branch
+      )
+
+      updateCard(card.id, {
+        worktreePath: null,
+        worktreeBranch: null,
+        sessionId: null,
+        claudeSessionId: null
+      })
+      const info = await startSession(card.id, card.title, card.projectDir, null)
+      updateCard(card.id, { sessionId: info.id })
+
+      useUIStore
+        .getState()
+        .showToast(warning ?? `Merged '${branch}' into '${mergedInto}' and removed the worktree`, warning ? 'error' : 'info')
+      setOpen(false)
+      onSwitched()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Merge failed')
+      // The merge failed after the session was stopped — bring it back in the
+      // worktree (resuming its conversation) so the card isn't left dead.
+      try {
+        const info = await startSession(card.id, card.title, worktreePath, card.claudeSessionId)
+        updateCard(card.id, { sessionId: info.id })
+      } catch {
+        // starting failed too; clicking the card starts fresh
+      }
+    } finally {
+      setBusy(false)
+      setBusyText(null)
+    }
+  }, [card, stopSession, closeTab, updateCard, startSession, onSwitched])
 
   const handleRemove = useCallback(
     async (path: string, force: boolean): Promise<void> => {
@@ -256,14 +338,26 @@ export default function WorktreeMenu({ card, sessionId, branchName, onSwitched }
               </div>
             </div>
             {inWorktree && (
-              <button
-                style={actionBtn}
-                disabled={busy}
-                onClick={() => switchTo(null, null)}
-                title="Restart this card's session in the main checkout"
-              >
-                Back to main repo
-              </button>
+              <>
+                {card.worktreeBranch && (
+                  <button
+                    style={{ ...actionBtn, borderColor: '#22c55e66', color: '#22c55e' }}
+                    disabled={busy}
+                    onClick={handleMergeBack}
+                    title={`Merge '${card.worktreeBranch}' into '${data?.currentBranch ?? 'the main branch'}', remove this worktree and its branch, and return the session to the main checkout`}
+                  >
+                    {busyText === 'Merging…' ? 'Merging…' : `Merge into ${data?.currentBranch ?? 'main'}`}
+                  </button>
+                )}
+                <button
+                  style={actionBtn}
+                  disabled={busy}
+                  onClick={() => switchTo(null, null)}
+                  title="Restart this card's session in the main checkout (keeps the worktree)"
+                >
+                  Back to main repo
+                </button>
+              </>
             )}
           </div>
 
@@ -372,9 +466,25 @@ export default function WorktreeMenu({ card, sessionId, branchName, onSwitched }
                 disabled={busy || !newBranch.trim() || !baseRef}
                 onClick={handleCreate}
               >
-                {busy ? 'Working…' : 'Create & use'}
+                {busy ? busyText ?? 'Working…' : 'Create & use'}
               </button>
             </div>
+
+            <label
+              className="flex items-center cursor-pointer"
+              style={{ gap: 6, padding: '6px 10px 0' }}
+              title="Runs npm/yarn/pnpm install in the new worktree (detected by lockfile). Skipped when there's no package.json."
+            >
+              <input
+                type="checkbox"
+                checked={installDeps}
+                onChange={(e) => setInstallDeps(e.target.checked)}
+                style={{ accentColor: 'var(--text-primary)', cursor: 'pointer' }}
+              />
+              <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                Install dependencies after creating (can take a while)
+              </span>
+            </label>
 
             {/* Open an existing branch as a worktree */}
             {availableBranches.length > 0 && (
@@ -393,7 +503,8 @@ export default function WorktreeMenu({ card, sessionId, branchName, onSwitched }
                         setBusy(true)
                         setError(null)
                         try {
-                          const { path } = await window.api.addWorktree(card.projectDir, b.name, '', false)
+                          const { path, installError } = await window.api.addWorktree(card.projectDir, b.name, '', false, installDeps)
+                          if (installError) useUIStore.getState().showToast(installError)
                           await switchTo(path, b.name)
                         } catch (e) {
                           setError(e instanceof Error ? e.message : 'Failed to open worktree')

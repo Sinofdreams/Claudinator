@@ -25,6 +25,7 @@ export const IPC = {
   GIT_BRANCHES: 'git:branches',
   GIT_WORKTREE_ADD: 'git:worktree-add',
   GIT_WORKTREE_REMOVE: 'git:worktree-remove',
+  GIT_WORKTREE_MERGE_BACK: 'git:worktree-merge-back',
 
   // Stats
   STATS_TODAY: 'stats:today',

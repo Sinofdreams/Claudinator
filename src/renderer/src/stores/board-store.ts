@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { v4 as uuid } from 'uuid'
 import { BoardState, Card, Column, ColumnId, createDefaultBoard } from '@shared/models'
+import { useUIStore } from './ui-store'
 
 interface BoardActions {
   load: () => Promise<void>
@@ -82,6 +83,30 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   },
 
   deleteCard: (id) => {
+    // Clean up the card's worktree (non-forced: a worktree with uncommitted
+    // changes is kept and reported). Fire-and-forget — the card goes away
+    // immediately either way.
+    const doomed = get().cards[id]
+    if (doomed?.worktreePath) {
+      const { worktreePath, projectDir, sessionId } = doomed
+      void (async () => {
+        try {
+          if (sessionId) {
+            await window.api.stopSession(sessionId)
+            // give the shell a beat to release the directory on Windows
+            await new Promise((r) => setTimeout(r, 800))
+          }
+          await window.api.removeWorktree(projectDir, worktreePath!)
+          useUIStore.getState().showToast(`Removed worktree ${worktreePath}`, 'info')
+        } catch (e) {
+          useUIStore
+            .getState()
+            .showToast(
+              `Card deleted, but its worktree was kept: ${e instanceof Error ? e.message.slice(0, 200) : 'could not remove'}`
+            )
+        }
+      })()
+    }
     set((state) => {
       const card = state.cards[id]
       if (!card) return state
@@ -97,6 +122,17 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   },
 
   moveCard: (cardId, toColumnId, toIndex) => {
+    // Completing a card that still owns a worktree deserves a nudge — the
+    // work may be unmerged, so we never auto-delete it here.
+    const moving = get().cards[cardId]
+    if (moving?.worktreePath && toColumnId === 'done' && moving.columnId !== 'done') {
+      useUIStore
+        .getState()
+        .showToast(
+          `"${moving.title}" still has worktree '${moving.worktreeBranch ?? ''}' — merge or remove it from the session's branch menu`,
+          'info'
+        )
+    }
     set((state) => {
       const card = state.cards[cardId]
       if (!card) return state

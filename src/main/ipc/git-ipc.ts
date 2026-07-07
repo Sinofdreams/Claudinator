@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
-import { execFile } from 'child_process'
+import { execFile, exec } from 'child_process'
+import { existsSync } from 'fs'
 import { join, dirname, basename, resolve, normalize } from 'path'
 import { IPC } from '@shared/ipc-channels'
 import type { GitBranchesResult, GitWorktreeInfo } from '@shared/models'
@@ -91,6 +92,26 @@ async function findMainRoot(dir: string): Promise<string> {
   const main = parseWorktrees(porcelain).find((w) => w.isMain)
   return main?.path ?? anyRoot
 }
+
+/**
+ * Install JS dependencies in a fresh worktree, picking the package manager by
+ * lockfile. No lockfile/package.json → nothing to do. Runs through a shell so
+ * the .cmd shims resolve on Windows.
+ */
+function installDependencies(dir: string): Promise<void> {
+  if (!existsSync(join(dir, 'package.json'))) return Promise.resolve()
+  let cmd = 'npm install'
+  if (existsSync(join(dir, 'pnpm-lock.yaml'))) cmd = 'pnpm install'
+  else if (existsSync(join(dir, 'yarn.lock'))) cmd = 'yarn install'
+  return new Promise((res, reject) => {
+    exec(cmd, { cwd: dir, timeout: 10 * 60_000, maxBuffer: 16 * 1024 * 1024 }, (err, _stdout, stderr) => {
+      if (err) reject(new Error(`${cmd} failed: ${(stderr || err.message).slice(-500)}`))
+      else res()
+    })
+  })
+}
+
+const delay = (ms: number): Promise<void> => new Promise((res) => setTimeout(res, ms))
 
 export function registerGitIpc(): void {
   // Cache resolved git root per projectDir+sessionId
@@ -220,8 +241,9 @@ export function registerGitIpc(): void {
       projectDir: string,
       branch: string,
       baseRef: string,
-      createBranch: boolean
-    ): Promise<{ path: string; branch: string }> => {
+      createBranch: boolean,
+      installDeps?: boolean
+    ): Promise<{ path: string; branch: string; installError?: string }> => {
       const root = await findMainRoot(projectDir)
 
       // Sibling folder next to the repo, so the worktree never sits inside the
@@ -233,8 +255,20 @@ export function registerGitIpc(): void {
         ? ['worktree', 'add', worktreePath, '-b', branch, baseRef]
         : ['worktree', 'add', worktreePath, branch]
       await runGit(args, root)
+      const absPath = resolve(worktreePath)
 
-      return { path: resolve(worktreePath), branch }
+      // Optional dependency install — worktrees don't share node_modules.
+      // Best-effort: a failed install still leaves a usable worktree.
+      let installError: string | undefined
+      if (installDeps) {
+        try {
+          await installDependencies(absPath)
+        } catch (e) {
+          installError = e instanceof Error ? e.message : String(e)
+        }
+      }
+
+      return { path: absPath, branch, installError }
     }
   )
 
@@ -246,6 +280,78 @@ export function registerGitIpc(): void {
       if (force) args.push('--force')
       args.push(worktreePath)
       await runGit(args, root)
+    }
+  )
+
+  // Merge a worktree's branch back into the main checkout's branch, then clean
+  // the worktree and the (now-merged) branch up. Refuses on dirty trees and
+  // aborts on conflicts rather than leaving a half-merged repo behind.
+  ipcMain.handle(
+    IPC.GIT_WORKTREE_MERGE_BACK,
+    async (
+      _event,
+      projectDir: string,
+      worktreePath: string,
+      branch: string
+    ): Promise<{ mergedInto: string; warning?: string }> => {
+      const root = await findMainRoot(projectDir)
+
+      const worktreeStatus = await runGit(['status', '--porcelain=v1'], worktreePath)
+      if (worktreeStatus.trim()) {
+        throw new Error('The worktree has uncommitted changes — commit or stash them first.')
+      }
+      const rootStatus = await runGit(['status', '--porcelain=v1'], root)
+      if (rootStatus.trim()) {
+        throw new Error('The main checkout has uncommitted changes — commit or stash them first.')
+      }
+
+      const mainBranch = (await runGit(['branch', '--show-current'], root)).trim()
+      if (!mainBranch) {
+        throw new Error('The main checkout is on a detached HEAD — check out a branch first.')
+      }
+      if (mainBranch === branch) {
+        throw new Error(`The main checkout is already on '${branch}'.`)
+      }
+
+      try {
+        await runGit(['merge', branch], root)
+      } catch (e) {
+        // Leave the repo exactly as it was — no half-merged state.
+        try {
+          await runGit(['merge', '--abort'], root)
+        } catch {
+          // no merge in progress (e.g. the merge failed before starting)
+        }
+        const msg = e instanceof Error ? e.message : String(e)
+        throw new Error(`Merge into '${mainBranch}' failed:\n${msg.slice(0, 400)}`)
+      }
+
+      let warning: string | undefined
+
+      // The just-killed session's shell can hold a lock on the worktree dir for
+      // a moment on Windows — retry the removal briefly before giving up.
+      let removed = false
+      for (let attempt = 0; attempt < 3 && !removed; attempt++) {
+        try {
+          if (attempt > 0) await delay(700)
+          await runGit(['worktree', 'remove', worktreePath], root)
+          removed = true
+        } catch (e) {
+          if (attempt === 2) {
+            warning = `Merged, but the worktree could not be removed: ${e instanceof Error ? e.message : e}`
+          }
+        }
+      }
+
+      if (removed) {
+        try {
+          await runGit(['branch', '-d', branch], root)
+        } catch {
+          warning = `Merged, but branch '${branch}' could not be deleted.`
+        }
+      }
+
+      return { mergedInto: mainBranch, warning }
     }
   )
 }

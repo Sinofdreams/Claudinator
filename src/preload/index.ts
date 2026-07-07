@@ -63,12 +63,20 @@ const api = {
     projectDir: string,
     branch: string,
     baseRef: string,
-    createBranch: boolean
-  ): Promise<{ path: string; branch: string }> =>
-    ipcRenderer.invoke(IPC.GIT_WORKTREE_ADD, projectDir, branch, baseRef, createBranch),
+    createBranch: boolean,
+    installDeps?: boolean
+  ): Promise<{ path: string; branch: string; installError?: string }> =>
+    ipcRenderer.invoke(IPC.GIT_WORKTREE_ADD, projectDir, branch, baseRef, createBranch, installDeps),
 
   removeWorktree: (projectDir: string, worktreePath: string, force?: boolean): Promise<void> =>
     ipcRenderer.invoke(IPC.GIT_WORKTREE_REMOVE, projectDir, worktreePath, force),
+
+  mergeBackWorktree: (
+    projectDir: string,
+    worktreePath: string,
+    branch: string
+  ): Promise<{ mergedInto: string; warning?: string }> =>
+    ipcRenderer.invoke(IPC.GIT_WORKTREE_MERGE_BACK, projectDir, worktreePath, branch),
 
   // Stats
   getTodayStats: (): Promise<{
