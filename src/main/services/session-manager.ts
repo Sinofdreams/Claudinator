@@ -159,11 +159,13 @@ class SessionManager {
     ptyProcess.write(claudeCmd + '\r')
 
     // Detect the Claude conversation ID from the filesystem.
-    // The .jsonl file is only created when the first message is sent,
-    // so we poll continuously while the session is alive.
-    if (!claudeSessionId) {
-      this.startClaudeIdDetection(id, projectDir, startedAt)
-    }
+    // The .jsonl file is only created when the first message is sent, so we
+    // poll while the session is alive. This also runs for RESUMED sessions:
+    // `claude --resume` forks the conversation into a new file with a new id,
+    // so the id we were handed goes stale on the first message — tracking the
+    // newest file keeps the context badge live and the card's resume id
+    // pointing at the latest state (same applies to /clear or /new mid-session).
+    this.startClaudeIdDetection(id, projectDir, startedAt)
 
     return info
   }
@@ -221,10 +223,10 @@ class SessionManager {
   onClaudeId(sessionId: string, listener: (conversationId: string) => void): () => void {
     const managed = this.sessions.get(sessionId)
     if (!managed) return () => {}
-    // If already detected, fire immediately
+    // If already detected, fire immediately — but still subscribe: the id can
+    // change again while the session runs (resume forks, /clear, /new).
     if (managed.info.claudeSessionId) {
       listener(managed.info.claudeSessionId)
-      return () => {}
     }
     managed.claudeIdListeners.add(listener)
     return () => managed.claudeIdListeners.delete(listener)
@@ -298,7 +300,7 @@ class SessionManager {
 
     const poll = async (): Promise<void> => {
       const managed = this.sessions.get(sessionId)
-      if (!managed || managed.info.claudeSessionId || managed.info.status === 'stopped') return
+      if (!managed || managed.info.status === 'stopped') return
 
       try {
         const files = await readdir(claudeProjectDir)
@@ -320,19 +322,21 @@ class SessionManager {
           }
         }
 
-        if (newest) {
+        // Adopt the newest conversation file whenever it changes — resumes,
+        // /clear and /new all fork to a new id mid-session, so detection never
+        // stops while the session is alive.
+        if (newest && newest.id !== managed.info.claudeSessionId) {
           managed.info.claudeSessionId = newest.id
           for (const listener of managed.claudeIdListeners) {
             listener(newest.id)
           }
-          return
         }
       } catch {
         // directory may not exist yet
       }
 
       const m = this.sessions.get(sessionId)
-      if (m && !m.info.claudeSessionId && m.info.status !== 'stopped') {
+      if (m && m.info.status !== 'stopped') {
         setTimeout(poll, pollIntervalMs)
       }
     }
