@@ -1,4 +1,4 @@
-import { readdir } from 'fs/promises'
+import { readdir, stat } from 'fs/promises'
 import { createReadStream } from 'fs'
 import { createInterface } from 'readline'
 import { join } from 'path'
@@ -15,24 +15,33 @@ import type {
 } from '@shared/stats'
 import { EMPTY_SUMMARY } from '@shared/stats'
 
-// ---- Pricing (USD per 1M tokens, approximate list price) ----
+// ---- Pricing (USD per 1M tokens, list price as of 2026-07; cache write =
+// 1.25x input for the default 5-min TTL, cache read = 0.1x input) ----
 interface Pricing {
   input: number
   output: number
   cacheWrite: number
   cacheRead: number
 }
-type Family = 'opus' | 'sonnet' | 'haiku' | 'default'
+type Family = 'fable' | 'opus' | 'opusLegacy' | 'sonnet' | 'haiku' | 'default'
 const PRICING: Record<Family, Pricing> = {
-  opus: { input: 15, output: 75, cacheWrite: 18.75, cacheRead: 1.5 },
+  fable: { input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1 },
+  opus: { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
+  // Opus 4.1 and older were priced 3x higher than the 4.6+ generation
+  opusLegacy: { input: 15, output: 75, cacheWrite: 18.75, cacheRead: 1.5 },
   sonnet: { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },
-  haiku: { input: 0.8, output: 4, cacheWrite: 1, cacheRead: 0.08 },
+  haiku: { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 },
   default: { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 }
 }
 
 function modelFamily(model: string): Family {
   const m = model.toLowerCase()
-  if (m.includes('opus')) return 'opus'
+  if (m.includes('fable') || m.includes('mythos')) return 'fable'
+  if (m.includes('opus')) {
+    // Legacy = Opus 4.1, 4.0 (dated id: claude-opus-4-20250514) and Opus 3
+    if (m.includes('opus-4-1') || m.includes('opus-4-0') || m.includes('opus-4-2025') || m.includes('3-opus')) return 'opusLegacy'
+    return 'opus'
+  }
   if (m.includes('sonnet')) return 'sonnet'
   if (m.includes('haiku')) return 'haiku'
   return 'default'
@@ -40,6 +49,7 @@ function modelFamily(model: string): Family {
 
 function modelLabel(model: string): string {
   const m = model.toLowerCase()
+  if (m.includes('fable') || m.includes('mythos')) return 'Fable'
   if (m.includes('opus')) return 'Opus'
   if (m.includes('sonnet')) return 'Sonnet'
   if (m.includes('haiku')) return 'Haiku'
@@ -47,6 +57,7 @@ function modelLabel(model: string): string {
 }
 
 const MODEL_COLORS: Record<string, string> = {
+  Fable: '#f472b6',
   Opus: '#a855f7',
   Sonnet: '#3b82f6',
   Haiku: '#22c55e'
@@ -176,14 +187,14 @@ function streamOne(file: string, onLine: (line: string) => void): Promise<void> 
 // Process files with bounded concurrency to keep peak memory flat.
 async function streamFiles(
   files: string[],
-  onLine: (line: string) => void,
+  onLine: (line: string, file: string) => void,
   concurrency: number
 ): Promise<void> {
   let idx = 0
   const worker = async (): Promise<void> => {
     while (idx < files.length) {
       const f = files[idx++]
-      await streamOne(f, onLine)
+      await streamOne(f, (line) => onLine(line, f))
     }
   }
   const n = Math.max(1, Math.min(concurrency, files.length))
@@ -231,14 +242,20 @@ async function scanRaw(): Promise<RawBuckets> {
     return i + o + cc + cr
   }
 
-  const handleLine = (line: string): void => {
+  // Claude Code writes one transcript line per content block — every line of
+  // the same API response repeats the identical usage object. Track the last
+  // request id per file (block lines are contiguous) and count usage once.
+  const lastRequestIdByFile = new Map<string, string>()
+
+  const handleLine = (line: string, file: string): void => {
     if (line.length < 2 || line[0] !== '{') return
     let obj: {
       type?: string
       timestamp?: string
       sessionId?: string
+      requestId?: string
       cwd?: string
-      message?: { model?: string; usage?: RawUsage; content?: unknown }
+      message?: { id?: string; model?: string; usage?: RawUsage; content?: unknown }
     }
     try {
       obj = JSON.parse(line)
@@ -249,32 +266,11 @@ async function scanRaw(): Promise<RawBuckets> {
     const sid = obj.sessionId
 
     if (obj.type === 'assistant' && obj.message?.usage && ts) {
-      const usage = obj.message.usage
-      const model = obj.message.model ?? 'unknown'
-      const family = modelFamily(model)
       const day = localDay(ts)
       if (!firstDate || day < firstDate) firstDate = day
-
       const b = byDay.get(day) ?? emptyBucket()
-      const total = addUsage(b.totals, usage)
-      b.messages += 1
-      if (sid) b.sessions.add(sid)
 
-      b.hours[new Date(ts).getHours()] += total
-
-      const mEntry = b.models.get(model) ?? { totals: zero(), family }
-      addUsage(mEntry.totals, usage)
-      b.models.set(model, mEntry)
-
-      const cwd = obj.cwd
-      if (cwd) {
-        const pEntry = b.projects.get(cwd) ?? { totals: zero(), sessions: new Set<string>() }
-        addUsage(pEntry.totals, usage)
-        if (sid) pEntry.sessions.add(sid)
-        b.projects.set(cwd, pEntry)
-      }
-
-      // Count tool calls in this assistant message's content
+      // Tool calls: one line per content block, so count blocks on every line
       const content = obj.message.content
       if (Array.isArray(content)) {
         for (const block of content) {
@@ -285,6 +281,34 @@ async function scanRaw(): Promise<RawBuckets> {
           ) {
             b.toolCalls += 1
           }
+        }
+      }
+
+      const requestId = obj.requestId ?? obj.message.id ?? null
+      const isDuplicate = requestId !== null && lastRequestIdByFile.get(file) === requestId
+      if (requestId !== null) lastRequestIdByFile.set(file, requestId)
+
+      if (!isDuplicate) {
+        const usage = obj.message.usage
+        const model = obj.message.model ?? 'unknown'
+        const family = modelFamily(model)
+
+        const total = addUsage(b.totals, usage)
+        b.messages += 1
+        if (sid) b.sessions.add(sid)
+
+        b.hours[new Date(ts).getHours()] += total
+
+        const mEntry = b.models.get(model) ?? { totals: zero(), family }
+        addUsage(mEntry.totals, usage)
+        b.models.set(model, mEntry)
+
+        const cwd = obj.cwd
+        if (cwd) {
+          const pEntry = b.projects.get(cwd) ?? { totals: zero(), sessions: new Set<string>() }
+          addUsage(pEntry.totals, usage)
+          if (sid) pEntry.sessions.add(sid)
+          b.projects.set(cwd, pEntry)
         }
       }
 
@@ -495,4 +519,78 @@ function buildSummary(raw: RawBuckets, rangeDays: number): StatsSummary {
 function basename(p: string): string {
   const parts = p.replace(/[\\/]+$/, '').split(/[\\/]/)
   return parts[parts.length - 1] || p
+}
+
+// ---- Per-conversation cost (the "what did this card cost" badge) ----
+
+export interface SessionCost {
+  cost: number
+  tokens: number
+}
+
+// Keyed by transcript path; recomputed only when the file changes, so frequent
+// UI polling stays cheap even for multi-MB transcripts.
+const sessionCostCache = new Map<string, { mtimeMs: number; size: number; value: SessionCost }>()
+
+/**
+ * Total usage + estimated cost of one Claude conversation, summed per model
+ * family across every assistant message in its transcript.
+ *
+ * `sessionDir` is the directory the Claude session runs in (worktree-aware) —
+ * the same key Claude Code uses for ~/.claude/projects.
+ */
+export async function computeSessionCost(
+  sessionDir: string,
+  claudeSessionId: string
+): Promise<SessionCost | null> {
+  const projectKey = sessionDir.replace(/[^a-zA-Z0-9-]/g, '-').replace(/-+$/, '')
+  const file = join(homedir(), '.claude', 'projects', projectKey, claudeSessionId + '.jsonl')
+
+  let fileStat: Awaited<ReturnType<typeof stat>>
+  try {
+    fileStat = await stat(file)
+  } catch {
+    return null // no transcript (yet)
+  }
+
+  const cached = sessionCostCache.get(file)
+  if (cached && cached.mtimeMs === fileStat.mtimeMs && cached.size === fileStat.size) {
+    return cached.value
+  }
+
+  const perFamily = new Map<Family, UsageTotals>()
+  // Claude Code writes one line per content block, and every line of the same
+  // API response repeats the identical usage object — count each request once.
+  let lastRequestId: string | null = null
+  await streamOne(file, (line) => {
+    if (line.length < 2 || line[0] !== '{') return
+    const obj = JSON.parse(line) as {
+      type?: string
+      requestId?: string
+      message?: { id?: string; model?: string; usage?: RawUsage }
+    }
+    if (obj.type !== 'assistant' || !obj.message?.usage) return
+    const requestId = obj.requestId ?? obj.message.id ?? null
+    if (requestId && requestId === lastRequestId) return
+    lastRequestId = requestId
+    const family = modelFamily(obj.message.model ?? 'unknown')
+    const t = perFamily.get(family) ?? zero()
+    const u = obj.message.usage
+    t.input += u.input_tokens ?? 0
+    t.output += u.output_tokens ?? 0
+    t.cacheCreation += u.cache_creation_input_tokens ?? 0
+    t.cacheRead += u.cache_read_input_tokens ?? 0
+    perFamily.set(family, t)
+  })
+
+  let cost = 0
+  let tokens = 0
+  for (const [family, totals] of perFamily) {
+    cost += costFor(family, totals)
+    tokens += tokensOf(totals)
+  }
+
+  const value: SessionCost = { cost, tokens }
+  sessionCostCache.set(file, { mtimeMs: fileStat.mtimeMs, size: fileStat.size, value })
+  return value
 }
