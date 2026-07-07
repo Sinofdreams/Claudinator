@@ -4,6 +4,11 @@ All notable changes to Claude Code Orchestrator will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.10] - 2026-07-07
+
+### Fixed
+- Reopening a session card no longer loses most of the terminal history. Closing the session view used to destroy the terminal and rebuild it from a 1MB raw PTY buffer on reopen — which Claude Code's constant TUI redraws churn through quickly, leaving only a fraction of the visible history (sometimes garbled by replaying resize-sensitive escape sequences). The session view now stays alive (hidden) while its tabs are open, so terminals keep their full scrollback across close/reopen. Background polling, the Escape handler, and the title-bar dim all pause while hidden.
+
 ## [0.1.9] - 2026-07-02
 
 ### Added

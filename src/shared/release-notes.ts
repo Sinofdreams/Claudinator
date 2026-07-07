@@ -10,6 +10,14 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '0.1.10',
+    date: '2026-07-07',
+    summary: 'Terminal history survives closing a session.',
+    highlights: [
+      'Fixed reopening a session card showing only a fraction of the terminal history. The terminal is now kept alive (hidden) instead of being rebuilt from a lossy buffer, so your full scrollback is exactly as you left it.'
+    ]
+  },
+  {
     version: '0.1.9',
     date: '2026-07-02',
     summary: 'Pick your model, and keep the CLI up to date.',
