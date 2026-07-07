@@ -10,6 +10,7 @@ import Sidebar from './components/Layout/Sidebar'
 import SessionModal from './components/Terminal/SessionModal'
 import CardDialog from './components/Board/CardDialog'
 import WhatsNewModal from './components/WhatsNew/WhatsNewModal'
+import Toasts from './components/Layout/Toasts'
 import { useUIStore } from './stores/ui-store'
 
 export default function App(): JSX.Element {
@@ -87,6 +88,9 @@ export default function App(): JSX.Element {
 
       {/* What's New popup (shown after an update, or from About) */}
       {whatsNewOpen && <WhatsNewModal />}
+
+      {/* Transient error/info toasts */}
+      <Toasts />
 
       {/* Global new card dialog — works from any view */}
       {currentView !== 'board' && newCardDialogOpen && (

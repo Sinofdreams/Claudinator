@@ -5,6 +5,7 @@ import type { Card, SessionStatus } from '@shared/models'
 import { useSessionStore } from '@/stores/session-store'
 import { useBoardStore } from '@/stores/board-store'
 import { useSettingsStore } from '@/stores/settings-store'
+import { useUIStore } from '@/stores/ui-store'
 import { getTagColor } from '@/utils/tag-colors'
 
 function relativeTime(timestamp: number): string {
@@ -350,7 +351,7 @@ export default function CardComponent({ card, onEdit }: CardComponentProps): JSX
         const info = await startSession(card.id, card.title, dir, card.claudeSessionId)
         updateCard(card.id, { sessionId: info.id })
       } catch (err) {
-        alert(err instanceof Error ? err.message : 'Failed to start session')
+        useUIStore.getState().showToast(err instanceof Error ? err.message : 'Failed to start session')
       }
     }
   }
