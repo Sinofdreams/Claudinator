@@ -187,11 +187,31 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     // arrow-select prompt prints, e.g. "Enter to select · ↑/↓ to navigate · Esc
     // to cancel". Match "Esc to cancel" (a prompt) but NOT "esc to interrupt"
     // (shown while Claude is actively generating).
+    const DECISION_RE = /to navigate|Enter to select|Esc to cancel|[❯›▶]\s*\d+\.|Do you want to (?:proceed|continue)/gi
+    // Signals that Claude is actively working: the interrupt hint, or the
+    // spinner timer "(40s · thinking)" it redraws while generating.
+    const RUNNING_RE = /esc to interrupt|\(\d+s\s*·/gi
+
+    const lastMatchIndex = (t: string, re: RegExp): number => {
+      re.lastIndex = 0
+      let pos = -1
+      let m: RegExpExecArray | null
+      while ((m = re.exec(t))) {
+        pos = m.index
+        if (m.index === re.lastIndex) re.lastIndex++
+      }
+      return pos
+    }
+
+    // A prompt is only "live" if its markers appear LATER in the stream than
+    // the most recent working signal. A dismissed or timed-out prompt (e.g.
+    // AskUserQuestion's "No response after 60s — continued") leaves its footer
+    // text in the tail while Claude keeps generating — newest signal wins.
     const isDecisionPrompt = (raw: string): boolean => {
       const t = stripAnsi(raw)
-      return /to navigate|Enter to select|Esc to cancel|[❯›▶]\s*\d+\.|Do you want to (?:proceed|continue)/i.test(
-        t
-      )
+      const decisionPos = lastMatchIndex(t, DECISION_RE)
+      if (decisionPos < 0) return false
+      return decisionPos > lastMatchIndex(t, RUNNING_RE)
     }
 
     const unsubData = window.api.onSessionData((sessionId, data) => {
