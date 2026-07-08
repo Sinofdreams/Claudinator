@@ -4,6 +4,16 @@ All notable changes to Claude Code Orchestrator will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.13] - 2026-07-07
+
+### Added
+- Merge back from a worktree in one click: the branch menu's new "Merge into `<branch>`" button merges the worktree's branch into the main checkout, removes the worktree, deletes the merged branch, and returns the card's session to the main repo. Refuses cleanly if either tree has uncommitted changes (checked before your session is touched), and merge conflicts abort completely — the repo is left exactly as it was and the session resumes in the worktree.
+- Deleting a card now cleans up its worktree: the session is stopped and the worktree removed, unless it has uncommitted changes (then it's kept and you get a toast). Moving a worktree card to Complete shows a reminder instead — unmerged work is never auto-deleted.
+- Optional dependency install when creating a worktree: a checkbox runs npm/yarn/pnpm (detected by lockfile) in the new worktree; skipped when there's no package.json.
+
+### Changed
+- Internal: `tsc` now passes with zero errors (ES2022 target, React 19 JSX namespace fix, a null-guard bug in the git diff panel), and a GitHub Actions workflow gates every PR and push with typecheck + build.
+
 ## [0.1.12] - 2026-07-07
 
 ### Added

@@ -10,6 +10,16 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '0.1.13',
+    date: '2026-07-07',
+    summary: 'Worktrees, full circle.',
+    highlights: [
+      'Merge back in one click — the branch menu merges your worktree branch into the main checkout, cleans up the worktree and branch, and drops your session back in the main repo. Dirty trees are refused safely and conflicts abort without leaving a mess.',
+      'Deleting a card removes its worktree too (unless it has uncommitted work — that’s kept, with a heads-up).',
+      'New worktrees can install their dependencies automatically (npm/yarn/pnpm, detected by lockfile).'
+    ]
+  },
+  {
     version: '0.1.12',
     date: '2026-07-07',
     summary: 'Get pinged when Claude needs you, and see what each card costs.',
