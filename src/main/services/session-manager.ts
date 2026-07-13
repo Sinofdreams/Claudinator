@@ -8,6 +8,19 @@ import { PAT } from './settings-persistence'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+/**
+ * Context window per model family (as of 2026-07): Fable/Mythos, Opus 4.6+,
+ * and Sonnet 4.6+/5 have 1M; Haiku and older-generation models have 200k.
+ */
+function contextLimitFor(model: string): number {
+  const m = model.toLowerCase()
+  if (m.includes('haiku')) return 200_000
+  // Older generations before the 1M window
+  if (m.includes('opus-4-5') || m.includes('opus-4-1') || m.includes('opus-4-0') || m.includes('3-opus')) return 200_000
+  if (m.includes('sonnet-4-5') || m.includes('sonnet-4-0') || m.includes('3-5-sonnet') || m.includes('3-7-sonnet')) return 200_000
+  return 1_000_000
+}
+
 const BUFFER_SIZE = 1024 * 1024 // 1MB ring buffer
 
 // Dynamic import of node-pty - may fail if native module isn't compiled
@@ -273,7 +286,7 @@ class SessionManager {
             const inputTokens = (usage.input_tokens ?? 0)
               + (usage.cache_creation_input_tokens ?? 0)
               + (usage.cache_read_input_tokens ?? 0)
-            const contextLimit = 1000000
+            const contextLimit = contextLimitFor(entry?.message?.model ?? '')
             const pct = Math.round((inputTokens / contextLimit) * 100)
             if (inputTokens >= 1000) {
               const k = (inputTokens / 1000).toFixed(1).replace(/\.0$/, '')
