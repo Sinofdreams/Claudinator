@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { useSettingsStore } from '@/stores/settings-store'
+import { useSessionStore } from '@/stores/session-store'
 import type { ITheme } from '@xterm/xterm'
 
 // Tokyo Night palette (matches the Mux terminal emulator)
@@ -85,6 +86,17 @@ export default function TerminalView({ sessionId, isVisible }: TerminalViewProps
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
+  const [scrolledUp, setScrolledUp] = useState(false)
+
+  const jumpToBottom = useCallback(() => {
+    const term = terminalRef.current
+    if (!term) return
+    term.scrollToBottom()
+    // Long sessions can leave the renderer showing a stale frame after big
+    // buffer churn — repaint the whole viewport to be sure.
+    term.refresh(0, term.rows - 1)
+    term.focus()
+  }, [])
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -161,6 +173,14 @@ export default function TerminalView({ sessionId, isVisible }: TerminalViewProps
     terminal.attachCustomKeyEventHandler((event) => {
       if (event.type !== 'keydown') return true
 
+      // Shift+Esc closes the card view even while the terminal is focused.
+      // Plain Esc stays with the CLI — it interrupts generation, dequeues
+      // queued messages, dismisses menus, and Esc-Esc opens history rewind.
+      if (event.key === 'Escape' && event.shiftKey) {
+        useSessionStore.getState().setViewingSession(null)
+        return false
+      }
+
       // Ctrl+C with selection → copy to clipboard, don't send SIGINT
       if (event.ctrlKey && event.key === 'c' && terminal.hasSelection()) {
         navigator.clipboard.writeText(terminal.getSelection())
@@ -189,6 +209,25 @@ export default function TerminalView({ sessionId, isVisible }: TerminalViewProps
     terminal.onData((data) => {
       window.api.writeSession(sessionId, data)
     })
+
+    // Scroll-position tracking. On long sessions xterm's wheel scrolling can
+    // stop a few rows short of the true bottom after heavy buffer churn (it
+    // resyncs on keypress via scrollOnUserInput). Two mitigations: snap the
+    // last couple of rows when the user wheels near the bottom, and surface a
+    // jump-to-bottom button whenever the view isn't at the bottom.
+    const updateScrolledUp = (): void => {
+      const buf = terminal.buffer.active
+      const gap = buf.baseY - buf.viewportY
+      if (gap > 0 && gap <= 2) {
+        terminal.scrollToBottom()
+        setScrolledUp(false)
+        return
+      }
+      setScrolledUp(gap > 0)
+    }
+    const scrollDisp = terminal.onScroll(updateScrolledUp)
+    // baseY can grow (new output) while viewportY stays put — recheck on writes.
+    const writeDisp = terminal.onWriteParsed(updateScrolledUp)
 
     // Highlight user input lines (lines starting with > or ❯)
     terminal.onLineFeed(() => {
@@ -237,6 +276,8 @@ export default function TerminalView({ sessionId, isVisible }: TerminalViewProps
     return () => {
       unsubTheme()
       cleanup?.()
+      scrollDisp.dispose()
+      writeDisp.dispose()
       resizeObserver.disconnect()
       textarea?.removeEventListener('focus', applyFocusStyle)
       textarea?.removeEventListener('blur', applyFocusStyle)
@@ -262,9 +303,33 @@ export default function TerminalView({ sessionId, isVisible }: TerminalViewProps
   return (
     <div
       className="h-full w-full"
-      style={{ display: isVisible ? 'block' : 'none', padding: '8px 12px 0 12px' }}
+      style={{ display: isVisible ? 'block' : 'none', padding: '8px 12px 0 12px', position: 'relative' }}
     >
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      {scrolledUp && (
+        <button
+          onClick={jumpToBottom}
+          title="Jump to bottom"
+          className="flex items-center justify-center transition-opacity cursor-pointer"
+          style={{
+            position: 'absolute',
+            bottom: 18,
+            right: 28,
+            width: 34,
+            height: 34,
+            borderRadius: 17,
+            border: '1px solid var(--border-primary)',
+            backgroundColor: 'var(--bg-elevated, var(--bg-surface))',
+            color: 'var(--text-secondary)',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            zIndex: 10
+          }}
+        >
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M8 3v9M4 8.5L8 12.5l4-4" />
+          </svg>
+        </button>
+      )}
     </div>
   )
 }
