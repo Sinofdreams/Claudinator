@@ -4,6 +4,16 @@ All notable changes to Claude Code Orchestrator will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.14] - 2026-07-13
+
+### Added
+- Shift+Esc closes the card view even while the terminal has focus. Plain Esc stays with the CLI — it interrupts generation, dequeues queued messages, dismisses menus, and Esc-Esc opens history rewind.
+- A floating jump-to-bottom button appears in the terminal whenever you're scrolled up; clicking it scrolls to the bottom, repaints the viewport, and refocuses the input.
+
+### Fixed
+- On long sessions, scrolling back down could stop a few rows short of the true bottom until you typed something. Wheeling to within a couple of rows of the bottom now snaps fully down.
+- The context-usage badge now uses the model's real context window (Haiku 200k, older generations 200k, current models 1M) instead of assuming 1M for everything.
+
 ## [0.1.13] - 2026-07-07
 
 ### Added
