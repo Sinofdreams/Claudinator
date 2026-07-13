@@ -1,6 +1,6 @@
 {
   "name": "claude-orchestrator",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "description": "Desktop Kanban board for managing Claude Code CLI sessions",
   "author": "Marco Bornman <marco.bornman@nurtur.tech>",
   "main": "./out/main/index.js",

@@ -10,6 +10,16 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '0.1.14',
+    date: '2026-07-13',
+    summary: 'Smoother terminals.',
+    highlights: [
+      'Scrolling long sessions no longer gets stuck just above the bottom — and a floating ↓ button jumps you back down from anywhere in the scrollback.',
+      'Shift+Esc closes the card view even while you’re typing in the terminal. Plain Esc stays with the CLI for interrupts and menus.',
+      'The context badge now respects each model’s real context window (Haiku: 200k), so its percentage is meaningful on every model.'
+    ]
+  },
+  {
     version: '0.1.13',
     date: '2026-07-07',
     summary: 'Worktrees, full circle.',
