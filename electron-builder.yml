@@ -23,6 +23,6 @@ nsis:
   createDesktopShortcut: always
 publish:
   - provider: github
-    owner: Sinofdreams
+    owner: marcobornman
     repo: Claudinator
     releaseType: release
