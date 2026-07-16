@@ -161,6 +161,7 @@ const api = {
   getAppVersion: (): Promise<string> => ipcRenderer.invoke(IPC.APP_VERSION),
   notify: (args: { title: string; body: string; sessionId: string }): Promise<void> =>
     ipcRenderer.invoke(IPC.APP_NOTIFY, args),
+  flashFrame: (): Promise<void> => ipcRenderer.invoke(IPC.APP_FLASH_FRAME),
   onNotificationClick: (callback: (sessionId: string) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, sessionId: string): void => {
       callback(sessionId)

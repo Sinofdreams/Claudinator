@@ -127,6 +127,7 @@ export default function SettingsDialog({ onClose }: SettingsDialogProps): JSX.El
   // Notification prefs live in localStorage (read at notify time), default on.
   const [notifyDecision, setNotifyDecision] = useState(localStorage.getItem('notify-decision') !== 'off')
   const [notifyWaiting, setNotifyWaiting] = useState(localStorage.getItem('notify-waiting') !== 'off')
+  const [notifyFlash, setNotifyFlash] = useState(localStorage.getItem('notify-flash') !== 'off')
   const [initialTheme] = useState(store.theme)
   const [initialActiveCustomId] = useState(store.activeCustomThemeId)
   const [initialOverrides] = useState<ThemeOverrides>(() => JSON.parse(JSON.stringify(store.themeOverrides)))
@@ -669,8 +670,9 @@ export default function SettingsDialog({ onClose }: SettingsDialogProps): JSX.El
                   <label style={labelStyle}>Notifications</label>
                   {(
                     [
-                      { key: 'notify-decision', state: notifyDecision, setState: setNotifyDecision, label: 'When a session needs a decision', hint: 'Permission prompts, plan approvals, menu choices.' },
-                      { key: 'notify-waiting', state: notifyWaiting, setState: setNotifyWaiting, label: 'When a session finishes', hint: 'Claude is done and waiting for your next prompt.' }
+                      { key: 'notify-decision', state: notifyDecision, setState: setNotifyDecision, label: 'Toast when a session needs a decision', hint: 'Permission prompts, plan approvals, menu choices.' },
+                      { key: 'notify-waiting', state: notifyWaiting, setState: setNotifyWaiting, label: 'Toast when a session finishes', hint: 'Claude is done and waiting for your next prompt.' },
+                      { key: 'notify-flash', state: notifyFlash, setState: setNotifyFlash, label: 'Flash the taskbar icon', hint: 'A subtle nudge when any session needs attention while the app is in the background. No popup.' }
                     ] as const
                   ).map((t) => (
                     <label
@@ -693,7 +695,7 @@ export default function SettingsDialog({ onClose }: SettingsDialogProps): JSX.El
                     </label>
                   ))}
                   <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
-                    Native Windows toasts. Suppressed while you're viewing that session; clicking one opens it.
+                    Toasts are suppressed while you're viewing that session; clicking one opens it. The taskbar flash stops as soon as you focus the app.
                   </p>
                 </div>
 

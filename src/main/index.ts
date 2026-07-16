@@ -78,6 +78,11 @@ async function createWindow(): Promise<void> {
     mainWindow.show()
   })
 
+  // Stop the taskbar-flash nudge as soon as the user comes back to the app.
+  mainWindow.on('focus', () => {
+    mainWindow.flashFrame(false)
+  })
+
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }

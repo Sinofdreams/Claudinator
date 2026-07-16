@@ -30,4 +30,12 @@ export function registerNotifyIpc(): void {
       notification.show()
     }
   )
+
+  // Subtle nudge: flash the taskbar icon (Windows orange flash). Stops on its
+  // own when the window gains focus — see the focus handler in main/index.ts.
+  ipcMain.handle(IPC.APP_FLASH_FRAME, (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win || win.isDestroyed() || win.isFocused()) return
+    win.flashFrame(true)
+  })
 }

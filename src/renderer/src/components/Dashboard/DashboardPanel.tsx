@@ -417,7 +417,7 @@ export default function DashboardPanel(): JSX.Element {
           disabled={refreshing}
           title={refreshing ? 'Refreshing…' : 'Refresh'}
           className="flex items-center justify-center rounded-lg transition-colors cursor-pointer hover:opacity-90 disabled:opacity-50"
-          style={{ width: 38, height: 38, backgroundColor: 'var(--bg-button)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)', WebkitAppRegion: 'no-drag', marginRight: 140 } as React.CSSProperties}
+          style={{ width: 38, height: 38, backgroundColor: 'var(--bg-button)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)', WebkitAppRegion: 'no-drag', marginRight: 300 } as React.CSSProperties}
         >
           <svg
             width="19"

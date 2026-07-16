@@ -153,22 +153,30 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       // Only ping on the transition out of active work — re-renders of an
       // already-flagged prompt shouldn't fire again.
       if (from !== 'running' && from !== 'starting') return
-      if (localStorage.getItem(to === 'decision' ? 'notify-decision' : 'notify-waiting') === 'off') return
-      // Don't ping when the user is already looking at this session.
-      if (document.hasFocus() && get().viewingSessionId === sessionId) return
       const now = Date.now()
       if (now - (lastNotified.get(sessionId) ?? 0) < NOTIFY_COOLDOWN_MS) return
+      const focused = document.hasFocus()
+      // Subtle nudge: flash the taskbar icon when the app isn't focused.
+      const wantFlash = !focused && localStorage.getItem('notify-flash') !== 'off'
+      // OS toast — skipped when the user is already looking at this session.
+      const wantToast =
+        localStorage.getItem(to === 'decision' ? 'notify-decision' : 'notify-waiting') !== 'off' &&
+        !(focused && get().viewingSessionId === sessionId)
+      if (!wantFlash && !wantToast) return
       lastNotified.set(sessionId, now)
       const session = get().sessions[sessionId]
       if (!session) return
-      window.api.notify({
-        title: sessionTitle(session),
-        body:
-          to === 'decision'
-            ? 'Claude is waiting for a decision'
-            : 'Claude has finished — waiting for your prompt',
-        sessionId
-      })
+      if (wantFlash) window.api.flashFrame()
+      if (wantToast) {
+        window.api.notify({
+          title: sessionTitle(session),
+          body:
+            to === 'decision'
+              ? 'Claude is waiting for a decision'
+              : 'Claude has finished — waiting for your prompt',
+          sessionId
+        })
+      }
     }
 
     // Claude Code draws interactive prompts with Ink, which wraps text in lots

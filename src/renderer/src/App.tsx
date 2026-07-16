@@ -11,6 +11,7 @@ import SessionModal from './components/Terminal/SessionModal'
 import CardDialog from './components/Board/CardDialog'
 import WhatsNewModal from './components/WhatsNew/WhatsNewModal'
 import Toasts from './components/Layout/Toasts'
+import AttentionBadges from './components/Layout/AttentionBadges'
 import { useUIStore } from './stores/ui-store'
 
 export default function App(): JSX.Element {
@@ -79,6 +80,9 @@ export default function App(): JSX.Element {
         {currentView === 'notes' && <NotesPanel />}
         {currentView === 'dashboard' && <DashboardPanel />}
       </div>
+
+      {/* Title-bar session-status badges (needs decision / waiting / running) */}
+      <AttentionBadges />
 
       {/* Session modal overlay — kept mounted (hidden) after close so the
           terminals keep their scrollback */}

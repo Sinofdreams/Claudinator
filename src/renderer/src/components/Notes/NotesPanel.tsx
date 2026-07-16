@@ -763,10 +763,11 @@ export default function NotesPanel(): JSX.Element {
       <div className="flex flex-1 flex-col overflow-hidden">
         {activePath ? (
           <>
-            {/* Toolbar — reserve space on the right for the window controls overlay */}
+            {/* Toolbar — reserve space on the right for the window controls overlay
+                plus the title-bar attention badges */}
             <div
               className="flex items-center"
-              style={{ gap: 10, padding: '10px 145px 10px 16px', borderBottom: '1px solid var(--border-primary)' }}
+              style={{ gap: 10, padding: '10px 300px 10px 16px', borderBottom: '1px solid var(--border-primary)' }}
             >
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
                 {renaming ? (
