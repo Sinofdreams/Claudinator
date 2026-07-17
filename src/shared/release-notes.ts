@@ -10,6 +10,15 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '0.1.15',
+    date: '2026-07-17',
+    summary: 'Know when Claude needs you — without the noise.',
+    highlights: [
+      'Title-bar badges next to the window buttons count the sessions that need a decision (orange), are waiting for your prompt (green), or are working (blue). Click one for a dropdown of the card names — click a name to jump straight in.',
+      'A subtle taskbar flash when a session needs attention while the app is in the background — stops the moment you focus the app. Toggle it in Settings → General; turn the toast notifications off there too if you prefer the nudge-only setup.'
+    ]
+  },
+  {
     version: '0.1.14',
     date: '2026-07-13',
     summary: 'Smoother terminals.',
