@@ -4,6 +4,15 @@ All notable changes to Claude Code Orchestrator will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.15] - 2026-07-17
+
+### Added
+- Title-bar attention badges: a chip cluster next to the window caption buttons shows how many sessions need a decision (orange), have finished and are waiting for your prompt (green), or are actively working (blue). Chips only appear when their count is above zero. Clicking one drops down the list of card names in that state — click a name to open its session. The Dashboard header and Notes toolbar reserve extra top-right space so their controls stay clear.
+- Taskbar-flash nudge: when a session needs a decision or finishes while the app is in the background, the taskbar icon flashes (the classic Windows orange flash) and stops as soon as you focus the app. Its own toggle lives in Settings → General (default on) — combined with turning the two toast toggles off, you get a fully silent "nudge only" setup.
+
+### Changed
+- Release publishing and the auto-updater now point at the repository's new location (`marcobornman/Claudinator`) after the account rename. Existing installs keep updating via GitHub's redirect.
+
 ## [0.1.14] - 2026-07-13
 
 ### Added
