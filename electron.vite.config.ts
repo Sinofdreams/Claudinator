@@ -5,7 +5,9 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    // @xterm/xterm is only imported as ?raw strings (served to the phone by
+    // the remote server) — keep it bundled instead of externalized.
+    plugins: [externalizeDepsPlugin({ exclude: ['@xterm/xterm'] })],
     resolve: {
       alias: {
         '@shared': resolve('src/shared')

@@ -2,7 +2,9 @@ import { app, BrowserWindow, Menu, shell, ipcMain } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { registerAllIpc } from './ipc/register-all'
+import { startRemoteIfEnabled } from './ipc/remote-ipc'
 import { sessionManager } from './services/session-manager'
+import { remoteServer } from './services/remote-server'
 import { loadSettings } from './services/settings-persistence'
 import { IPC } from '@shared/ipc-channels'
 
@@ -104,6 +106,7 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(null)
   registerAllIpc()
   await createWindow()
+  startRemoteIfEnabled()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -119,4 +122,5 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   sessionManager.killAll()
+  remoteServer.stop()
 })

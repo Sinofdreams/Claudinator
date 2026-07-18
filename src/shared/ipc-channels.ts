@@ -80,6 +80,10 @@ export const IPC = {
   CLI_VERSION: 'cli:version',
   CLI_UPDATE: 'cli:update',
 
+  // Phone remote (embedded LAN server)
+  REMOTE_STATUS: 'remote:status',
+  REMOTE_SET: 'remote:set',
+
   // Detached markdown preview window
   PREVIEW_OPEN: 'preview:open',
   PREVIEW_CLOSE: 'preview:close',

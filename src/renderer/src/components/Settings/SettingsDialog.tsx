@@ -59,13 +59,14 @@ const removeBtnStyle: React.CSSProperties = {
   flexShrink: 0,
 }
 
-type Section = 'general' | 'rules' | 'pats' | 'theme' | 'about'
+type Section = 'general' | 'rules' | 'pats' | 'theme' | 'remote' | 'about'
 
 const sections: { id: Section; label: string }[] = [
   { id: 'general', label: 'General' },
   { id: 'rules', label: 'Rules' },
   { id: 'pats', label: 'PATs' },
   { id: 'theme', label: 'Theme' },
+  { id: 'remote', label: 'Remote' },
   { id: 'about', label: 'About' },
 ]
 
@@ -128,6 +129,9 @@ export default function SettingsDialog({ onClose }: SettingsDialogProps): JSX.El
   const [notifyDecision, setNotifyDecision] = useState(localStorage.getItem('notify-decision') !== 'off')
   const [notifyWaiting, setNotifyWaiting] = useState(localStorage.getItem('notify-waiting') !== 'off')
   const [notifyFlash, setNotifyFlash] = useState(localStorage.getItem('notify-flash') !== 'off')
+  // Phone remote (loaded when the Remote section opens)
+  const [remote, setRemote] = useState<Awaited<ReturnType<typeof window.api.getRemoteStatus>> | null>(null)
+  const [remoteBusy, setRemoteBusy] = useState(false)
   const [initialTheme] = useState(store.theme)
   const [initialActiveCustomId] = useState(store.activeCustomThemeId)
   const [initialOverrides] = useState<ThemeOverrides>(() => JSON.parse(JSON.stringify(store.themeOverrides)))
@@ -181,6 +185,11 @@ export default function SettingsDialog({ onClose }: SettingsDialogProps): JSX.El
       setCliMessage((err as Error).message)
     }
   }
+
+  useEffect(() => {
+    if (activeSection !== 'remote') return
+    window.api.getRemoteStatus().then(setRemote).catch(() => {})
+  }, [activeSection])
 
   useEffect(() => {
     if (activeSection !== 'about') return
@@ -1120,6 +1129,103 @@ export default function SettingsDialog({ onClose }: SettingsDialogProps): JSX.El
                     Create
                   </button>
                 </div>
+              </div>
+            )}
+
+            {activeSection === 'remote' && (
+              <div>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 16px' }}>
+                  View the board and act on running sessions from your phone. Starts a small
+                  server on your local network — scan the QR code with your phone's camera to pair.
+                </p>
+
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0', cursor: 'pointer', marginBottom: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={remote?.enabled ?? false}
+                    disabled={remoteBusy || !remote}
+                    onChange={async (e) => {
+                      setRemoteBusy(true)
+                      try {
+                        setRemote(await window.api.setRemote({ enabled: e.target.checked }))
+                      } finally {
+                        setRemoteBusy(false)
+                      }
+                    }}
+                    style={{ marginTop: 2, accentColor: 'var(--text-primary)', cursor: 'pointer' }}
+                  />
+                  <span>
+                    <span style={{ display: 'block', fontSize: 13, color: 'var(--text-primary)' }}>Enable phone remote</span>
+                    <span style={{ display: 'block', fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                      Serves on port {remote?.port ?? 8377}. Windows Firewall will ask once — allow on private networks.
+                    </span>
+                  </span>
+                </label>
+
+                {remote?.error && (
+                  <p style={{ fontSize: 12, color: 'var(--danger, #f85149)', marginBottom: 12 }}>
+                    Failed to start: {remote.error}
+                  </p>
+                )}
+
+                {remote?.running && remote.qrDataUrl && (
+                  <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', marginTop: 8 }}>
+                    <img
+                      src={remote.qrDataUrl}
+                      alt="Pairing QR code"
+                      style={{ width: 180, height: 180, borderRadius: 10, border: '1px solid var(--border-subtle)', backgroundColor: '#fff' }}
+                    />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <label style={labelStyle}>Pairing link</label>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          fontFamily: 'monospace',
+                          color: 'var(--text-primary)',
+                          backgroundColor: 'var(--bg-surface)',
+                          border: '1px solid var(--border-subtle)',
+                          borderRadius: 8,
+                          padding: '8px 10px',
+                          wordBreak: 'break-all',
+                          userSelect: 'all'
+                        }}
+                      >
+                        {remote.pairUrl}
+                      </div>
+                      <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
+                        Works on your Wi-Fi. For access anywhere, install Tailscale on this PC and
+                        your phone — no other changes needed. The link contains the access token;
+                        treat it like a password.
+                      </p>
+                      <button
+                        disabled={remoteBusy}
+                        onClick={async () => {
+                          setRemoteBusy(true)
+                          try {
+                            setRemote(await window.api.setRemote({ enabled: true, regenToken: true }))
+                          } finally {
+                            setRemoteBusy(false)
+                          }
+                        }}
+                        style={{
+                          marginTop: 10,
+                          padding: '7px 12px',
+                          borderRadius: 8,
+                          fontSize: 12,
+                          border: '1px solid var(--border-subtle)',
+                          backgroundColor: 'var(--bg-button)',
+                          color: 'var(--text-secondary)',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Regenerate token
+                      </button>
+                      <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+                        Invalidates the old link — any paired phone must rescan.
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

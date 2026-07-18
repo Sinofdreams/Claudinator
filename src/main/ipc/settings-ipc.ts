@@ -9,8 +9,11 @@ export function registerSettingsIpc(): void {
     return await loadSettings()
   })
 
-  ipcMain.handle(IPC.SETTINGS_SAVE, async (_event, settings: Settings) => {
-    await saveSettings(settings)
+  ipcMain.handle(IPC.SETTINGS_SAVE, async (_event, settings: Partial<Settings>) => {
+    // Merge over what's on disk: the renderer only round-trips the fields it
+    // knows about, and main-managed fields (e.g. `remote`) must survive.
+    const existing = await loadSettings()
+    await saveSettings({ ...existing, ...settings })
   })
 
   ipcMain.handle(IPC.SETTINGS_ADD_RULE, async (_event, rule: string) => {

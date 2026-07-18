@@ -42,10 +42,17 @@ interface ManagedSession {
   statusListeners: Set<(status: SessionStatus) => void>
   // Attention detection: after 3s of PTY silence, decide waiting vs decision.
   idleTimer?: ReturnType<typeof setTimeout>
+  // Last PTY size (set by the desktop terminal) — remote viewers render at
+  // the same grid so the screen replays correctly.
+  cols: number
+  rows: number
 }
 
 class SessionManager {
   private sessions = new Map<string, ManagedSession>()
+  // Global listeners (not per-session) — used by the remote server, which
+  // exists before sessions do and must hear about all of them.
+  private anyStatusListeners = new Set<(sessionId: string, status: SessionStatus) => void>()
 
   async start(
     cardId: string,
@@ -147,7 +154,9 @@ class SessionManager {
       dataListeners: new Set(),
       exitListeners: new Set(),
       claudeIdListeners: new Set(),
-      statusListeners: new Set()
+      statusListeners: new Set(),
+      cols: 120,
+      rows: 30
     }
 
     ptyProcess.onData((data) => {
@@ -214,9 +223,16 @@ class SessionManager {
     if (!managed) return
     try {
       managed.ptyProcess.resize(cols, rows)
+      managed.cols = cols
+      managed.rows = rows
     } catch {
       // ignore resize errors
     }
+  }
+
+  getDims(sessionId: string): { cols: number; rows: number } {
+    const managed = this.sessions.get(sessionId)
+    return { cols: managed?.cols ?? 120, rows: managed?.rows ?? 30 }
   }
 
   getBuffer(sessionId: string): string {
@@ -258,6 +274,11 @@ class SessionManager {
     if (!managed) return () => {}
     managed.statusListeners.add(listener)
     return () => managed.statusListeners.delete(listener)
+  }
+
+  onAnyStatus(listener: (sessionId: string, status: SessionStatus) => void): () => void {
+    this.anyStatusListeners.add(listener)
+    return () => this.anyStatusListeners.delete(listener)
   }
 
   listSessions(): SessionInfo[] {
@@ -416,6 +437,9 @@ class SessionManager {
     managed.info.status = status
     for (const listener of managed.statusListeners) {
       listener(status)
+    }
+    for (const listener of this.anyStatusListeners) {
+      listener(managed.info.id, status)
     }
   }
 

@@ -10,6 +10,14 @@ export interface PAT {
   value: string
 }
 
+/** Phone-remote server config. Managed by main (remote-ipc), not the renderer
+ *  settings round-trip — SETTINGS_SAVE merges over disk so these survive. */
+export interface RemoteSettings {
+  enabled: boolean
+  port: number
+  token: string | null
+}
+
 export interface Settings {
   defaultProjectDir: string
   claudeModel: string
@@ -20,6 +28,7 @@ export interface Settings {
   themeOverrides: ThemeOverrides
   customThemes: CustomTheme[]
   activeCustomThemeId: string | null
+  remote: RemoteSettings
 }
 
 function getDataDir(): string {
@@ -31,7 +40,7 @@ function getSettingsPath(): string {
 }
 
 function createDefaultSettings(): Settings {
-  return { defaultProjectDir: '', claudeModel: 'claude-opus-4-8', notesDir: '', rules: [], pats: [], theme: 'dark', themeOverrides: { dark: {}, light: {} }, customThemes: [], activeCustomThemeId: null }
+  return { defaultProjectDir: '', claudeModel: 'claude-opus-4-8', notesDir: '', rules: [], pats: [], theme: 'dark', themeOverrides: { dark: {}, light: {} }, customThemes: [], activeCustomThemeId: null, remote: { enabled: false, port: 8377, token: null } }
 }
 
 export async function loadSettings(): Promise<Settings> {

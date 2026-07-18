@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta name="theme-color" content="#0d1117" />
+<title>Claudinator Remote</title>
+<link rel="stylesheet" href="/assets/xterm.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    overscroll-behavior: none;
+  }
+
+  /* ---- Board view ---- */
+  #board { padding: 14px 14px 40px; max-width: 560px; margin: 0 auto; }
+  .topbar { display: flex; align-items: center; gap: 10px; padding: 4px 2px 14px; }
+  .topbar h1 { font-size: 16px; font-weight: 600; flex: 1; }
+  .conn { width: 8px; height: 8px; border-radius: 50%; background: #f85149; }
+  .conn.ok { background: #3fb950; }
+  .colTitle {
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+    color: #9198a1; margin: 16px 2px 8px; display: flex; gap: 6px; align-items: center;
+  }
+  .colTitle .n { color: #59636e; font-weight: 500; }
+  .card {
+    background: #161b22; border: 1px solid #21262d; border-radius: 10px;
+    padding: 12px 14px; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .card.tappable:active { background: #1c2129; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; background: #59636e; }
+  .dot.running { background: #58a6ff; }
+  .dot.waiting { background: #3fb950; }
+  .dot.decision { background: #e8833a; animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.35; } }
+  .cardBody { flex: 1; min-width: 0; }
+  .cardTitle { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cardMeta { font-size: 11px; color: #9198a1; margin-top: 3px; display: flex; gap: 8px; }
+  .chev { color: #59636e; font-size: 16px; }
+  .empty { color: #59636e; font-size: 13px; text-align: center; padding: 40px 0; }
+
+  /* ---- Terminal view ---- */
+  #session { position: fixed; inset: 0; background: #0d1117; display: none; flex-direction: column; }
+  #session.open { display: flex; }
+  .sessHead {
+    display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+    border-bottom: 1px solid #21262d; flex-shrink: 0;
+  }
+  .back {
+    background: #21262d; border: none; color: #e6edf3; border-radius: 8px;
+    padding: 8px 14px; font-size: 13px;
+  }
+  .sessTitle { font-size: 14px; font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #termWrap { flex: 1; overflow: auto; padding: 6px 0 0 6px; }
+  #term { width: max-content; }
+  .stoppedNote {
+    display: none; padding: 8px 14px; background: #3d1d1f; color: #ffa198; font-size: 12px;
+  }
+  .stoppedNote.show { display: block; }
+
+  /* ---- Input bar ---- */
+  .inputBar { flex-shrink: 0; border-top: 1px solid #21262d; background: #161b22; padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); }
+  .quickRow { display: flex; gap: 6px; margin-bottom: 8px; overflow-x: auto; }
+  .qk {
+    background: #21262d; border: 1px solid #30363d; color: #e6edf3;
+    border-radius: 8px; padding: 9px 0; font-size: 13px; flex: 1; min-width: 40px;
+    text-align: center;
+  }
+  .qk:active { background: #30363d; }
+  .textRow { display: flex; gap: 8px; }
+  #msg {
+    flex: 1; background: #0d1117; border: 1px solid #30363d; border-radius: 8px;
+    color: #e6edf3; padding: 10px 12px; font-size: 16px; outline: none; min-width: 0;
+  }
+  #sendBtn {
+    background: #1f6feb; border: none; color: #fff; border-radius: 8px;
+    padding: 0 18px; font-size: 14px; font-weight: 600;
+  }
+  #sendBtn:active { opacity: 0.8; }
+
+  #authErr { display: none; padding: 60px 20px; text-align: center; color: #ffa198; font-size: 14px; }
+</style>
+</head>
+<body>
+  <div id="authErr">Unauthorized — rescan the QR code from Settings → Remote on your PC.</div>
+
+  <div id="board">
+    <div class="topbar">
+      <h1>Claudinator</h1>
+      <div class="conn" id="conn"></div>
+    </div>
+    <div id="cols"></div>
+  </div>
+
+  <div id="session">
+    <div class="sessHead">
+      <button class="back" id="backBtn">‹ Board</button>
+      <div class="sessTitle" id="sessTitle"></div>
+      <div class="dot" id="sessDot"></div>
+    </div>
+    <div class="stoppedNote" id="stoppedNote">Session stopped.</div>
+    <div id="termWrap"><div id="term"></div></div>
+    <div class="inputBar">
+      <div class="quickRow">
+        <button class="qk" data-k="&#27;">Esc</button>
+        <button class="qk" data-k="&#27;[A">↑</button>
+        <button class="qk" data-k="&#27;[B">↓</button>
+        <button class="qk" data-k="1">1</button>
+        <button class="qk" data-k="2">2</button>
+        <button class="qk" data-k="3">3</button>
+        <button class="qk" data-k="y">y</button>
+        <button class="qk" data-k="n">n</button>
+        <button class="qk" data-k="&#13;">Enter</button>
+      </div>
+      <div class="textRow">
+        <input id="msg" type="text" autocomplete="off" autocapitalize="off" placeholder="Type a prompt…" />
+        <button id="sendBtn">Send</button>
+      </div>
+    </div>
+  </div>
+
+<script src="/assets/xterm.js"></script>
+<script>
+(function () {
+  var token = location.hash.slice(1)
+  var ws = null
+  var state = null
+  var term = null
+  var curSession = null // { sessionId, cardTitle }
+  var reconnectDelay = 1000
+
+  var $ = function (id) { return document.getElementById(id) }
+
+  function api(path) {
+    return fetch(path + '?t=' + encodeURIComponent(token)).then(function (r) {
+      if (r.status === 401) { showAuthError(); throw new Error('unauthorized') }
+      return r.json()
+    })
+  }
+
+  function showAuthError() {
+    $('authErr').style.display = 'block'
+    $('board').style.display = 'none'
+    $('session').classList.remove('open')
+  }
+
+  // ---- Board rendering ----
+  function statusLabel(s) {
+    if (s === 'decision') return 'needs a decision'
+    if (s === 'waiting') return 'waiting for prompt'
+    if (s === 'running') return 'working'
+    if (s === 'starting') return 'starting'
+    return null
+  }
+
+  function renderBoard() {
+    if (!state) return
+    var cols = $('cols')
+    cols.innerHTML = ''
+    var any = false
+    state.columns.forEach(function (col) {
+      if (!col.cards.length) return
+      any = true
+      var h = document.createElement('div')
+      h.className = 'colTitle'
+      h.innerHTML = col.title + ' <span class="n">' + col.cards.length + '</span>'
+      cols.appendChild(h)
+      // Decision cards float to the top of their column.
+      var sorted = col.cards.slice().sort(function (a, b) {
+        var da = a.status === 'decision' ? 0 : 1
+        var db = b.status === 'decision' ? 0 : 1
+        return da - db
+      })
+      sorted.forEach(function (card) {
+        var el = document.createElement('div')
+        el.className = 'card' + (card.sessionId ? ' tappable' : '')
+        var meta = []
+        var sl = statusLabel(card.status)
+        if (sl) meta.push(sl)
+        if (card.worktreeBranch) meta.push('⎇ ' + card.worktreeBranch)
+        if (card.cost != null) meta.push('$' + card.cost.toFixed(2))
+        el.innerHTML =
+          '<div class="dot ' + (card.status || '') + '"></div>' +
+          '<div class="cardBody">' +
+          '  <div class="cardTitle"></div>' +
+          '  <div class="cardMeta">' + meta.map(function (m) { return '<span>' + m + '</span>' }).join('') + '</div>' +
+          '</div>' +
+          (card.sessionId ? '<div class="chev">›</div>' : '')
+        el.querySelector('.cardTitle').textContent = card.title
+        if (card.sessionId) {
+          el.addEventListener('click', function () { openSession(card.sessionId, card.title) })
+        }
+        cols.appendChild(el)
+      })
+    })
+    if (!any) {
+      cols.innerHTML = '<div class="empty">No cards on the board.</div>'
+    }
+  }
+
+  function refreshState() {
+    api('/api/state').then(function (s) { state = s; renderBoard(); updateSessionDot() }).catch(function () {})
+  }
+
+  // ---- Session/terminal view ----
+  function findCard(sessionId) {
+    if (!state) return null
+    var found = null
+    state.columns.forEach(function (col) {
+      col.cards.forEach(function (c) { if (c.sessionId === sessionId) found = c })
+    })
+    return found
+  }
+
+  function updateSessionDot() {
+    if (!curSession) return
+    var card = findCard(curSession.sessionId)
+    $('sessDot').className = 'dot ' + ((card && card.status) || '')
+    if (card && card.status === null) $('stoppedNote').classList.add('show')
+  }
+
+  function openSession(sessionId, title) {
+    curSession = { sessionId: sessionId, cardTitle: title }
+    $('sessTitle').textContent = title
+    $('stoppedNote').classList.remove('show')
+    $('session').classList.add('open')
+    updateSessionDot()
+    if (term) { term.dispose(); term = null }
+    sendWs({ type: 'sub', sessionId: sessionId })
+  }
+
+  function closeSession() {
+    if (curSession) sendWs({ type: 'unsub', sessionId: curSession.sessionId })
+    curSession = null
+    $('session').classList.remove('open')
+    if (term) { term.dispose(); term = null }
+    refreshState()
+  }
+
+  function initTerm(cols, rows) {
+    if (term) term.dispose()
+    term = new Terminal({
+      cols: cols, rows: rows,
+      fontSize: 11,
+      fontFamily: 'Menlo, Consolas, monospace',
+      scrollback: 5000,
+      disableStdin: true,
+      theme: { background: '#0d1117', foreground: '#e6edf3' }
+    })
+    term.open($('term'))
+  }
+
+  // ---- WebSocket ----
+  function sendWs(obj) {
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj))
+  }
+
+  function connect() {
+    var proto = location.protocol === 'https:' ? 'wss://' : 'ws://'
+    ws = new WebSocket(proto + location.host + '/ws?t=' + encodeURIComponent(token))
+
+    ws.onopen = function () {
+      $('conn').className = 'conn ok'
+      reconnectDelay = 1000
+      refreshState()
+      // Re-attach to the open session after a reconnect.
+      if (curSession) sendWs({ type: 'sub', sessionId: curSession.sessionId })
+    }
+
+    ws.onmessage = function (ev) {
+      var msg
+      try { msg = JSON.parse(ev.data) } catch (e) { return }
+
+      if (msg.type === 'status') {
+        // Update in place; cards appearing/disappearing come via refresh.
+        var known = false
+        if (state) state.columns.forEach(function (col) {
+          col.cards.forEach(function (c) {
+            if (c.sessionId === msg.sessionId) { c.status = msg.status; known = true }
+          })
+        })
+        if (known) { renderBoard(); updateSessionDot() } else { refreshState() }
+        if (curSession && msg.sessionId === curSession.sessionId && msg.status === 'stopped') {
+          $('stoppedNote').classList.add('show')
+        }
+        return
+      }
+
+      if (msg.type === 'buffer' && curSession && msg.sessionId === curSession.sessionId) {
+        initTerm(msg.cols, msg.rows)
+        term.write(msg.data, function () {
+          term.scrollToBottom()
+          var wrap = $('termWrap')
+          wrap.scrollTop = wrap.scrollHeight
+        })
+        return
+      }
+
+      if (msg.type === 'data' && term && curSession && msg.sessionId === curSession.sessionId) {
+        term.write(msg.data)
+        term.scrollToBottom()
+        return
+      }
+    }
+
+    ws.onclose = function () {
+      $('conn').className = 'conn'
+      ws = null
+      setTimeout(connect, reconnectDelay)
+      reconnectDelay = Math.min(reconnectDelay * 2, 15000)
+    }
+
+    ws.onerror = function () { try { ws.close() } catch (e) {} }
+  }
+
+  // ---- Input ----
+  function write(data) {
+    if (curSession) sendWs({ type: 'write', sessionId: curSession.sessionId, data: data })
+  }
+
+  document.querySelectorAll('.qk').forEach(function (btn) {
+    btn.addEventListener('click', function () { write(btn.dataset.k) })
+  })
+
+  function sendPrompt() {
+    var input = $('msg')
+    if (!input.value) return
+    write(input.value + '\r')
+    input.value = ''
+  }
+  $('sendBtn').addEventListener('click', sendPrompt)
+  $('msg').addEventListener('keydown', function (e) { if (e.key === 'Enter') sendPrompt() })
+  $('backBtn').addEventListener('click', closeSession)
+
+  // Refresh the board when the phone comes back to the foreground.
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) refreshState()
+  })
+
+  if (!token) { showAuthError(); return }
+  refreshState()
+  connect()
+  // Cheap safety net: costs and board structure drift without events.
+  setInterval(function () { if (!document.hidden && !curSession) refreshState() }, 30000)
+})()
+</script>
+</body>
+</html>

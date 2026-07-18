@@ -198,6 +198,26 @@ const api = {
     error?: string
   }> => ipcRenderer.invoke(IPC.CLI_UPDATE),
 
+  // Phone remote (embedded LAN server)
+  getRemoteStatus: (): Promise<{
+    enabled: boolean
+    running: boolean
+    port: number
+    urls: string[]
+    pairUrl: string | null
+    qrDataUrl: string | null
+    error?: string
+  }> => ipcRenderer.invoke(IPC.REMOTE_STATUS),
+  setRemote: (args: { enabled: boolean; regenToken?: boolean }): Promise<{
+    enabled: boolean
+    running: boolean
+    port: number
+    urls: string[]
+    pairUrl: string | null
+    qrDataUrl: string | null
+    error?: string
+  }> => ipcRenderer.invoke(IPC.REMOTE_SET, args),
+
   // Detached markdown preview window
   openPreview: (): Promise<void> => ipcRenderer.invoke(IPC.PREVIEW_OPEN),
   closePreview: (): Promise<void> => ipcRenderer.invoke(IPC.PREVIEW_CLOSE),
