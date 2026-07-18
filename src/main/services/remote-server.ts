@@ -3,6 +3,7 @@ import { WebSocketServer, WebSocket } from 'ws'
 import { networkInterfaces } from 'os'
 import { randomBytes, timingSafeEqual } from 'crypto'
 import { URL } from 'url'
+import { nativeImage } from 'electron'
 import { SessionStatus } from '@shared/models'
 import { sessionManager } from './session-manager'
 import { loadBoard } from './board-persistence'
@@ -10,6 +11,17 @@ import { computeSessionCost } from './stats-aggregator'
 import mobileHtml from '../remote/mobile.html?raw'
 import xtermJs from '@xterm/xterm/lib/xterm.js?raw'
 import xtermCss from '@xterm/xterm/css/xterm.css?raw'
+import iconDataUrl from '../../../build/icon.png?inline'
+
+const MANIFEST = JSON.stringify({
+  name: 'Claudinator',
+  short_name: 'Claudinator',
+  display: 'standalone',
+  start_url: '/',
+  background_color: '#0d1117',
+  theme_color: '#0d1117',
+  icons: [{ src: '/assets/icon.png', sizes: '180x180', type: 'image/png' }]
+})
 
 /**
  * Phone remote: a small LAN HTTP + WebSocket server embedded in the main
@@ -35,6 +47,9 @@ class RemoteServer {
   private port = 0
   private clients = new Set<ClientState>()
   private unsubAnyStatus: (() => void) | null = null
+  private unsubAnyResize: (() => void) | null = null
+  private resizeTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  private iconPng: Buffer | null = null
 
   isRunning(): boolean {
     return this.http !== null
@@ -94,6 +109,32 @@ class RemoteServer {
       this.broadcast({ type: 'status', sessionId, status })
     })
 
+    // When the desktop refits a PTY, re-send the buffer at the new grid to
+    // every phone watching that session (debounced — fit fires in bursts),
+    // otherwise their terminal keeps rendering the stale dimensions.
+    this.unsubAnyResize = sessionManager.onAnyResize((sessionId) => {
+      const existing = this.resizeTimers.get(sessionId)
+      if (existing) clearTimeout(existing)
+      this.resizeTimers.set(
+        sessionId,
+        setTimeout(() => {
+          this.resizeTimers.delete(sessionId)
+          const dims = sessionManager.getDims(sessionId)
+          for (const client of this.clients) {
+            if (client.subs.has(sessionId)) {
+              this.send(client.ws, {
+                type: 'buffer',
+                sessionId,
+                data: sessionManager.getBuffer(sessionId),
+                cols: dims.cols,
+                rows: dims.rows
+              })
+            }
+          }
+        }, 400)
+      )
+    })
+
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject)
       server.listen(port, () => {
@@ -109,6 +150,10 @@ class RemoteServer {
   async stop(): Promise<void> {
     this.unsubAnyStatus?.()
     this.unsubAnyStatus = null
+    this.unsubAnyResize?.()
+    this.unsubAnyResize = null
+    for (const timer of this.resizeTimers.values()) clearTimeout(timer)
+    this.resizeTimers.clear()
     for (const client of this.clients) {
       for (const unsub of client.subs.values()) unsub()
       client.subs.clear()
@@ -127,6 +172,22 @@ class RemoteServer {
       await new Promise<void>((resolve) => server.close(() => resolve()))
     }
     this.port = 0
+  }
+
+  /** App icon downscaled to home-screen size (cached; full-res is ~600 kB). */
+  private getIconPng(): Buffer {
+    if (!this.iconPng) {
+      const img = nativeImage.createFromDataURL(iconDataUrl)
+      this.iconPng = img.resize({ width: 180, height: 180 }).toPNG()
+    }
+    return this.iconPng
+  }
+
+  /** Called after every board save so phones refetch immediately. */
+  notifyBoardChanged(): void {
+    for (const client of this.clients) {
+      this.send(client.ws, { type: 'board' })
+    }
   }
 
   private checkToken(candidate: string | null): boolean {
@@ -154,6 +215,16 @@ class RemoteServer {
     if (url.pathname === '/assets/xterm.css') {
       res.writeHead(200, { 'Content-Type': 'text/css', 'Cache-Control': 'max-age=86400' })
       res.end(xtermCss)
+      return
+    }
+    if (url.pathname === '/assets/icon.png') {
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'max-age=86400' })
+      res.end(this.getIconPng())
+      return
+    }
+    if (url.pathname === '/manifest.webmanifest') {
+      res.writeHead(200, { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'max-age=86400' })
+      res.end(MANIFEST)
       return
     }
 

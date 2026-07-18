@@ -2,9 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <meta name="theme-color" content="#0d1117" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Claudinator" />
 <title>Claudinator Remote</title>
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="apple-touch-icon" href="/assets/icon.png" />
 <link rel="stylesheet" href="/assets/xterm.css" />
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -107,6 +112,7 @@
     <div class="inputBar">
       <div class="quickRow">
         <button class="qk" data-k="&#27;">Esc</button>
+        <button class="qk" data-k="&#27;[Z">⇧Tab</button>
         <button class="qk" data-k="&#27;[A">↑</button>
         <button class="qk" data-k="&#27;[B">↓</button>
         <button class="qk" data-k="1">1</button>
@@ -126,7 +132,14 @@
 <script src="/assets/xterm.js"></script>
 <script>
 (function () {
+  // Token arrives in the URL fragment from the pairing QR. Persist it so
+  // home-screen launches (which may drop the fragment) still authenticate.
   var token = location.hash.slice(1)
+  if (token) {
+    try { localStorage.setItem('claudinator-token', token) } catch (e) {}
+  } else {
+    try { token = localStorage.getItem('claudinator-token') || '' } catch (e) {}
+  }
   var ws = null
   var state = null
   var term = null
@@ -274,6 +287,11 @@
     ws.onmessage = function (ev) {
       var msg
       try { msg = JSON.parse(ev.data) } catch (e) { return }
+
+      if (msg.type === 'board') {
+        refreshState()
+        return
+      }
 
       if (msg.type === 'status') {
         // Update in place; cards appearing/disappearing come via refresh.

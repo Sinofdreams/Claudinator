@@ -53,6 +53,7 @@ class SessionManager {
   // Global listeners (not per-session) — used by the remote server, which
   // exists before sessions do and must hear about all of them.
   private anyStatusListeners = new Set<(sessionId: string, status: SessionStatus) => void>()
+  private anyResizeListeners = new Set<(sessionId: string, cols: number, rows: number) => void>()
 
   async start(
     cardId: string,
@@ -225,6 +226,9 @@ class SessionManager {
       managed.ptyProcess.resize(cols, rows)
       managed.cols = cols
       managed.rows = rows
+      for (const listener of this.anyResizeListeners) {
+        listener(sessionId, cols, rows)
+      }
     } catch {
       // ignore resize errors
     }
@@ -279,6 +283,11 @@ class SessionManager {
   onAnyStatus(listener: (sessionId: string, status: SessionStatus) => void): () => void {
     this.anyStatusListeners.add(listener)
     return () => this.anyStatusListeners.delete(listener)
+  }
+
+  onAnyResize(listener: (sessionId: string, cols: number, rows: number) => void): () => void {
+    this.anyResizeListeners.add(listener)
+    return () => this.anyResizeListeners.delete(listener)
   }
 
   listSessions(): SessionInfo[] {
