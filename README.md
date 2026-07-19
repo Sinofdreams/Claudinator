@@ -13,6 +13,7 @@ Organize tasks on a drag-and-drop board, spin up terminal sessions per card, and
 - **Themes** -- Dark and light modes with full CSS variable customization. Create, import, and export custom themes.
 - **PAT management** -- Store personal access tokens that get injected as environment variables into every session.
 - **Rules** -- Define instructions that are applied to every Claude Code session via CLAUDE.md.
+- **Phone remote** -- Enable in Settings > Remote and scan a QR code to view the board and act on running sessions from your phone (live status, terminal view, quick keys for answering prompts). LAN-only with token auth; pair with [Tailscale](https://tailscale.com) for access from anywhere.
 - **Auto-update** -- Check for and install updates from GitHub Releases (Settings > About).
 - **Persistence** -- Board state, sessions, and settings are saved automatically across restarts.
 
