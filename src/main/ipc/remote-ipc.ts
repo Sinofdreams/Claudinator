@@ -32,7 +32,8 @@ async function buildStatus(error?: string): Promise<RemoteStatus> {
   return {
     enabled: settings.remote.enabled,
     running,
-    port: settings.remote.port,
+    // The bound port can differ from the configured one (fallback when taken).
+    port: running ? remoteServer.getPort() : settings.remote.port,
     urls,
     pairUrl,
     qrDataUrl,

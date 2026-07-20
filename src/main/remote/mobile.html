@@ -29,8 +29,15 @@
   .colTitle {
     font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
     color: #9198a1; margin: 16px 2px 8px; display: flex; gap: 6px; align-items: center;
+    padding: 4px 2px; user-select: none; -webkit-user-select: none;
   }
+  .colTitle:active { opacity: 0.6; }
   .colTitle .n { color: #59636e; font-weight: 500; }
+  .colChev { color: #59636e; font-size: 9px; width: 11px; text-align: center; }
+  .colAlert {
+    width: 7px; height: 7px; border-radius: 50%; background: #e8833a;
+    animation: pulse 1.2s ease-in-out infinite; margin-left: 2px;
+  }
   .card {
     background: #161b22; border: 1px solid #21262d; border-radius: 10px;
     padding: 12px 14px; margin-bottom: 8px;
@@ -174,6 +181,15 @@
     return null
   }
 
+  // Collapsed columns are remembered per phone.
+  var collapsed = {}
+  try { collapsed = JSON.parse(localStorage.getItem('claudinator-collapsed') || '{}') } catch (e) {}
+  function toggleColumn(id) {
+    collapsed[id] = !collapsed[id]
+    try { localStorage.setItem('claudinator-collapsed', JSON.stringify(collapsed)) } catch (e) {}
+    renderBoard()
+  }
+
   function renderBoard() {
     if (!state) return
     var cols = $('cols')
@@ -182,10 +198,17 @@
     state.columns.forEach(function (col) {
       if (!col.cards.length) return
       any = true
+      var isCollapsed = !!collapsed[col.id]
+      var needsDecision = col.cards.some(function (c) { return c.status === 'decision' })
       var h = document.createElement('div')
       h.className = 'colTitle'
-      h.innerHTML = col.title + ' <span class="n">' + col.cards.length + '</span>'
+      h.innerHTML =
+        '<span class="colChev">' + (isCollapsed ? '▶' : '▼') + '</span>' +
+        col.title + ' <span class="n">' + col.cards.length + '</span>' +
+        (isCollapsed && needsDecision ? '<span class="colAlert"></span>' : '')
+      h.addEventListener('click', function () { toggleColumn(col.id) })
       cols.appendChild(h)
+      if (isCollapsed) return
       // Decision cards float to the top of their column.
       var sorted = col.cards.slice().sort(function (a, b) {
         var da = a.status === 'decision' ? 0 : 1

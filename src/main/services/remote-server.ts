@@ -135,13 +135,28 @@ class RemoteServer {
       )
     })
 
-    await new Promise<void>((resolve, reject) => {
-      server.once('error', reject)
-      server.listen(port, () => {
-        server.removeListener('error', reject)
-        resolve()
-      })
-    })
+    // Bind the requested port, falling back to the next few if it's taken —
+    // running dev alongside the installed app would otherwise always collide.
+    let boundPort = -1
+    for (let p = port; p < port + 10; p++) {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          server.once('error', reject)
+          server.listen(p, () => {
+            server.removeListener('error', reject)
+            resolve()
+          })
+        })
+        boundPort = p
+        break
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException)?.code !== 'EADDRINUSE') throw err
+      }
+    }
+    if (boundPort < 0) {
+      throw new Error(`Ports ${port}-${port + 9} are all in use`)
+    }
+    this.port = boundPort
 
     this.http = server
     this.wss = wss
