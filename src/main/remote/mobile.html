@@ -60,8 +60,11 @@
     padding: 8px 14px; font-size: 13px;
   }
   .sessTitle { font-size: 14px; font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #termWrap { flex: 1; overflow: auto; padding: 6px 0 0 6px; }
+  /* Vertical scrolling belongs to xterm's own viewport (native momentum);
+     the wrap only pans horizontally when viewing at 1:1. */
+  #termWrap { flex: 1; overflow-x: auto; overflow-y: hidden; padding: 6px 0 0 6px; }
   #term { width: max-content; }
+  .xterm .xterm-viewport { -webkit-overflow-scrolling: touch !important; overscroll-behavior: contain; }
   .stoppedNote {
     display: none; padding: 8px 14px; background: #3d1d1f; color: #ffa198; font-size: 12px;
   }
@@ -105,6 +108,7 @@
     <div class="sessHead">
       <button class="back" id="backBtn">‹ Board</button>
       <div class="sessTitle" id="sessTitle"></div>
+      <button class="back" id="fitBtn" title="Toggle fit-to-width / actual size">1:1</button>
       <div class="dot" id="sessDot"></div>
     </div>
     <div class="stoppedNote" id="stoppedNote">Session stopped.</div>
@@ -265,7 +269,28 @@
       theme: { background: '#0d1117', foreground: '#e6edf3' }
     })
     term.open($('term'))
+    applyFit()
   }
+
+  // Fit-to-width: zoom the terminal so the desktop's full column grid fits the
+  // phone screen (CSS zoom scales layout + hit-testing consistently in WebKit).
+  // Toggling 1:1 restores actual size with horizontal panning.
+  var fitMode = true
+  function applyFit() {
+    var el = $('term')
+    if (!term || !term.element) return
+    el.style.zoom = 1
+    var screen = term.element.querySelector('.xterm-screen')
+    var w = screen ? screen.offsetWidth : el.offsetWidth
+    if (fitMode && w > 0) {
+      var avail = $('termWrap').clientWidth - 8
+      if (avail < w) el.style.zoom = avail / w
+    }
+    $('fitBtn').textContent = fitMode ? '1:1' : 'Fit'
+    term.scrollToBottom()
+  }
+  $('fitBtn').addEventListener('click', function () { fitMode = !fitMode; applyFit() })
+  window.addEventListener('resize', function () { if (term) applyFit() })
 
   // ---- WebSocket ----
   function sendWs(obj) {
@@ -312,8 +337,6 @@
         initTerm(msg.cols, msg.rows)
         term.write(msg.data, function () {
           term.scrollToBottom()
-          var wrap = $('termWrap')
-          wrap.scrollTop = wrap.scrollHeight
         })
         return
       }
