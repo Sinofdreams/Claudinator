@@ -10,6 +10,17 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '0.1.16',
+    date: '2026-07-19',
+    summary: 'Your board, on your phone.',
+    highlights: [
+      'Phone remote: enable it in Settings → Remote, scan the QR code, and your phone shows the live board — status dots update in real time and cards needing a decision float to the top.',
+      'Tap a card with a running session for a live terminal view with quick keys (Esc, ⇧Tab, arrows, 1–3, y/n, Enter) and a prompt field. Answer permission prompts from the couch; the desktop terminal mirrors everything.',
+      '"Add to Home Screen" on the phone gives you a proper Claudinator app icon and full-screen launch.',
+      'Off by default, LAN-only, token-protected. Install Tailscale on your PC and phone to use it from anywhere.'
+    ]
+  },
+  {
     version: '0.1.15',
     date: '2026-07-17',
     summary: 'Know when Claude needs you — without the noise.',

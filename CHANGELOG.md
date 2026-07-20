@@ -4,6 +4,15 @@ All notable changes to Claude Code Orchestrator will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.16] - 2026-07-19
+
+### Added
+- Phone remote: view the board and act on running sessions from your phone's browser. Enable it in Settings → Remote and scan the QR code to pair — the phone gets a live board (status dots pushed over a WebSocket, decision cards floated to the top, branch/cost metadata) and tapping a card with a live session opens a terminal view with a quick-key row (Esc, ⇧Tab, arrows, 1–3, y/n, Enter) plus a prompt field. Everything writes into the same PTY the desktop sees, so both stay perfectly in sync. Board changes and desktop terminal resizes sync live. "Add to Home Screen" gives a proper app icon and full-screen launch.
+- Security: the server is off by default, binds to your LAN, and requires a random access token on every request (carried in the pairing link's URL fragment; regenerate it any time from Settings → Remote). For access away from home, pair it with Tailscale — nothing is ever exposed to the internet.
+
+### Changed
+- Attention detection (decision / waiting / running) moved from the renderer into the main process, which now owns session status authoritatively and pushes changes over a new `session:status` event. Board dots and notifications behave exactly as before.
+
 ## [0.1.15] - 2026-07-17
 
 ### Added
