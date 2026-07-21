@@ -1,8 +1,10 @@
 import { createServer, Server, IncomingMessage, ServerResponse } from 'http'
 import { WebSocketServer, WebSocket } from 'ws'
-import { networkInterfaces } from 'os'
+import { networkInterfaces, tmpdir } from 'os'
 import { randomBytes, timingSafeEqual } from 'crypto'
 import { URL } from 'url'
+import { join } from 'path'
+import { mkdir, writeFile } from 'fs/promises'
 import { nativeImage } from 'electron'
 import { SessionStatus } from '@shared/models'
 import { sessionManager } from './session-manager'
@@ -240,6 +242,55 @@ class RemoteServer {
     if (url.pathname === '/manifest.webmanifest') {
       res.writeHead(200, { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'max-age=86400' })
       res.end(MANIFEST)
+      return
+    }
+
+    // Photo upload from the phone: save to a temp file and type its path into
+    // the session's CLI input — the same mechanism as dragging a file onto the
+    // terminal, so Claude Code attaches it as an image.
+    if (req.method === 'POST' && url.pathname === '/api/upload') {
+      if (!this.checkToken(url.searchParams.get('t'))) {
+        res.writeHead(401, { 'Content-Type': 'application/json' })
+        res.end('{"error":"unauthorized"}')
+        return
+      }
+      const sessionId = url.searchParams.get('sessionId') ?? ''
+      if (!sessionManager.getInfo(sessionId)) {
+        res.writeHead(404, { 'Content-Type': 'application/json' })
+        res.end('{"error":"no such session"}')
+        return
+      }
+      const MAX_UPLOAD = 12 * 1024 * 1024
+      const chunks: Buffer[] = []
+      let size = 0
+      let tooLarge = false
+      await new Promise<void>((resolve, reject) => {
+        req.on('data', (c: Buffer) => {
+          size += c.length
+          if (size > MAX_UPLOAD) {
+            tooLarge = true
+            req.destroy()
+            resolve()
+            return
+          }
+          chunks.push(c)
+        })
+        req.on('end', resolve)
+        req.on('error', reject)
+      })
+      if (tooLarge) {
+        res.writeHead(413, { 'Content-Type': 'application/json' })
+        res.end('{"error":"image too large (max 12 MB)"}')
+        return
+      }
+      const name = (url.searchParams.get('name') || 'image.png').replace(/[^a-zA-Z0-9._-]/g, '_')
+      const dir = join(tmpdir(), 'claudinator-uploads')
+      await mkdir(dir, { recursive: true })
+      const filePath = join(dir, `${Date.now()}-${name}`)
+      await writeFile(filePath, Buffer.concat(chunks))
+      sessionManager.write(sessionId, filePath + ' ')
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ path: filePath }))
       return
     }
 

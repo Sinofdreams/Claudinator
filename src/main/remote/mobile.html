@@ -13,6 +13,9 @@
 <link rel="stylesheet" href="/assets/xterm.css" />
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  /* Stop iOS Safari inflating glyphs inside the zoomed terminal — without
+     this the fitted terminal renders squashed (tall glyphs in narrow cells). */
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   html, body { height: 100%; }
   body {
     background: #0d1117; color: #e6edf3;
@@ -79,10 +82,10 @@
 
   /* ---- Input bar ---- */
   .inputBar { flex-shrink: 0; border-top: 1px solid #21262d; background: #161b22; padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); }
-  .quickRow { display: flex; gap: 6px; margin-bottom: 8px; overflow-x: auto; }
+  .quickRow { display: flex; gap: 6px; margin-bottom: 6px; }
   .qk {
     background: #21262d; border: 1px solid #30363d; color: #e6edf3;
-    border-radius: 8px; padding: 9px 0; font-size: 13px; flex: 1; min-width: 40px;
+    border-radius: 8px; padding: 9px 0; font-size: 13px; flex: 1; min-width: 0;
     text-align: center;
   }
   .qk:active { background: #30363d; }
@@ -126,14 +129,18 @@
         <button class="qk" data-k="&#27;[Z">⇧Tab</button>
         <button class="qk" data-k="&#27;[A">↑</button>
         <button class="qk" data-k="&#27;[B">↓</button>
+        <button class="qk" data-k="&#13;">Enter</button>
+      </div>
+      <div class="quickRow" style="margin-bottom: 8px;">
         <button class="qk" data-k="1">1</button>
         <button class="qk" data-k="2">2</button>
         <button class="qk" data-k="3">3</button>
         <button class="qk" data-k="y">y</button>
         <button class="qk" data-k="n">n</button>
-        <button class="qk" data-k="&#13;">Enter</button>
       </div>
       <div class="textRow">
+        <button class="qk" id="imgBtn" style="flex: 0 0 46px;" title="Attach a photo">📷</button>
+        <input id="imgFile" type="file" accept="image/*" style="display: none;" />
         <input id="msg" type="text" autocomplete="off" autocapitalize="off" placeholder="Type a prompt…" />
         <button id="sendBtn">Send</button>
       </div>
@@ -307,7 +314,9 @@
     var w = screen ? screen.offsetWidth : el.offsetWidth
     if (fitMode && w > 0) {
       var avail = $('termWrap').clientWidth - 8
-      if (avail < w) el.style.zoom = avail / w
+      // Floor the zoom — a very wide desktop terminal would otherwise shrink
+      // below legibility. Slight horizontal panning beats unreadable text.
+      if (avail < w) el.style.zoom = Math.max(avail / w, 0.5)
     }
     $('fitBtn').textContent = fitMode ? '1:1' : 'Fit'
     term.scrollToBottom()
@@ -399,6 +408,29 @@
   $('sendBtn').addEventListener('click', sendPrompt)
   $('msg').addEventListener('keydown', function (e) { if (e.key === 'Enter') sendPrompt() })
   $('backBtn').addEventListener('click', closeSession)
+
+  // Photo attach: upload to the PC, which types the saved file's path into
+  // the CLI input (like drag-dropping a file onto the terminal).
+  $('imgBtn').addEventListener('click', function () { $('imgFile').click() })
+  $('imgFile').addEventListener('change', function () {
+    var file = $('imgFile').files[0]
+    $('imgFile').value = ''
+    if (!file || !curSession) return
+    var btn = $('imgBtn')
+    btn.textContent = '…'
+    fetch('/api/upload?t=' + encodeURIComponent(token) +
+          '&sessionId=' + encodeURIComponent(curSession.sessionId) +
+          '&name=' + encodeURIComponent(file.name || 'photo.jpg'),
+      { method: 'POST', body: file })
+      .then(function (r) {
+        btn.textContent = r.ok ? '✓' : '✗'
+        setTimeout(function () { btn.textContent = '📷' }, 1500)
+      })
+      .catch(function () {
+        btn.textContent = '✗'
+        setTimeout(function () { btn.textContent = '📷' }, 1500)
+      })
+  })
 
   // Refresh the board when the phone comes back to the foreground.
   document.addEventListener('visibilitychange', function () {
