@@ -10,6 +10,15 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '0.1.18',
+    date: '2026-07-20',
+    summary: 'Phone remote, properly polished.',
+    highlights: [
+      'Fit-to-width terminal text is genuinely readable now — the squashed rendering was an iOS quirk in CSS zoom, so fit mode scales the real font size instead.',
+      '"Add to Home Screen" works properly: the installed app authenticates on its own (no more Unauthorized screen), and if pairing is ever lost you can paste the pairing link right on the error screen.'
+    ]
+  },
+  {
     version: '0.1.17',
     date: '2026-07-20',
     summary: 'The phone remote grows up.',
