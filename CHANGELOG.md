@@ -4,6 +4,12 @@ All notable changes to Claude Code Orchestrator will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.18] - 2026-07-20
+
+### Fixed
+- Phone remote: fit-to-width text rendered squashed on iOS regardless of the 0.1.17 attempt — the culprit was iOS WebKit's CSS `zoom` rendering itself. Fit mode now scales xterm's actual font size (floored at 5px), so glyphs stay proportional at any width.
+- Phone remote: "Add to Home Screen" apps no longer launch to an Unauthorized screen. iOS gives installed web apps isolated storage and launches them at the manifest `start_url`, losing the scanned token — the manifest is now generated with the token baked into `start_url` (only for callers already presenting the valid token), the page accepts `?t=` as well as the `#fragment`, and the Unauthorized screen gains a paste-the-pairing-link rescue.
+
 ## [0.1.17] - 2026-07-20
 
 ### Added
