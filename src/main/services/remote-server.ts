@@ -226,7 +226,9 @@ class RemoteServer {
     // Static assets are served without the token — the page itself is inert;
     // everything stateful (API + WS) requires it.
     if (url.pathname === '/') {
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+      // no-store: the page ships inside the app bundle, so a cached copy can
+      // outlive an app update and mismatch the server's protocol/assets.
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' })
       res.end(mobileHtml)
       return
     }
