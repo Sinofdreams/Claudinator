@@ -10,6 +10,17 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '0.1.17',
+    date: '2026-07-20',
+    summary: 'The phone remote grows up.',
+    highlights: [
+      'Attach photos from your phone: the new 📷 button uploads a picture to your PC and drops its path into the CLI input, so Claude sees the image — screenshot something, attach it, ask away.',
+      'Tap a column header on the phone to collapse it (remembered per phone). Collapsed columns still pulse orange if something inside needs a decision.',
+      'Fit-to-width terminal text is actually readable now (an iOS font-inflation quirk squashed it), and the quick keys sit in two fixed rows instead of a scrolling strip.',
+      'Dev-friendly: the remote server picks the next free port instead of failing when another instance already owns it.'
+    ]
+  },
+  {
     version: '0.1.16',
     date: '2026-07-19',
     summary: 'Your board, on your phone.',

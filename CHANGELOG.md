@@ -4,6 +4,17 @@ All notable changes to Claude Code Orchestrator will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.17] - 2026-07-20
+
+### Added
+- Phone remote: attach photos. A camera button next to the prompt field opens your phone's photo picker; the image uploads to the PC (12 MB cap) and its saved path is typed into the session's CLI input — the same mechanism as dragging a file onto the terminal, so Claude Code attaches it as an image.
+- Phone remote: collapsible board columns. Tap a column header to collapse/expand it (remembered per phone); a collapsed column containing a card that needs a decision shows a pulsing orange dot.
+
+### Fixed
+- Phone remote: fit-to-width text no longer renders squashed on iOS (Safari's text auto-inflation was fighting the zoom), and the fit zoom is floored at 50% — very wide desktop terminals pan slightly instead of shrinking below legibility.
+- Phone remote: the quick keys are now two fixed rows (Esc / ⇧Tab / arrows / Enter and 1–3 / y / n) instead of one horizontally scrollable row.
+- The remote server falls back to the next free port (up to +9) when the configured one is taken, so running dev alongside the installed app no longer fails with EADDRINUSE. Settings shows the actually-bound port.
+
 ## [0.1.16] - 2026-07-19
 
 ### Added
